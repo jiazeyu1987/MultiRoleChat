@@ -312,16 +312,17 @@ class PerformanceMonitor:
                 'threshold': self.alert_thresholds['avg_response_time']
             })
 
-        # LLM错误率告警
-        llm_error_rate = 100 - metric.llm_success_rate
-        if llm_error_rate > self.alert_thresholds['llm_error_rate']:
-            alerts.append({
-                'type': 'llm_error_rate',
-                'severity': 'warning',
-                'message': f'LLM调用错误率过高: {llm_error_rate:.1f}%',
-                'value': llm_error_rate,
-                'threshold': self.alert_thresholds['llm_error_rate']
-            })
+        # LLM错误率告警 - 修复：如果没有LLM调用，不触发告警
+        if metric.llm_requests > 0:
+            llm_error_rate = 100 - metric.llm_success_rate
+            if llm_error_rate > self.alert_thresholds['llm_error_rate']:
+                alerts.append({
+                    'type': 'llm_error_rate',
+                    'severity': 'warning',
+                    'message': f'LLM调用错误率过高: {llm_error_rate:.1f}%',
+                    'value': llm_error_rate,
+                    'threshold': self.alert_thresholds['llm_error_rate']
+                })
 
         # 触发告警回调
         for alert in alerts:

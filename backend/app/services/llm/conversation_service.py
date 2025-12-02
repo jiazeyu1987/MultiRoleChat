@@ -3,7 +3,14 @@ import logging
 import asyncio
 from datetime import datetime
 
-from .base import LLMMessage, LLMResponse, LLMError
+from ..simple_llm import LLMResponse
+from .manager import LLMMessage
+
+class LLMError(Exception):
+    """自定义LLM错误"""
+    def __init__(self, message, provider=None):
+        super().__init__(message)
+        self.provider = provider
 from .manager import llm_manager
 
 logger = logging.getLogger(__name__)

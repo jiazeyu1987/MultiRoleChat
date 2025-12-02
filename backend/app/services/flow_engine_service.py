@@ -6,7 +6,7 @@ from app import db
 from app.models import Session, SessionRole, Message, FlowTemplate, FlowStep, Role
 from app.services.session_service import SessionService, SessionError, FlowExecutionError
 from app.services.llm.conversation_service import conversation_llm_service
-from app.services.llm.base import LLMError
+from app.services.llm.conversation_service import LLMError
 
 
 class FlowEngineService:

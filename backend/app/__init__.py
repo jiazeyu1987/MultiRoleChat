@@ -53,14 +53,18 @@ def create_app(config_name=None):
 
 def setup_logging(app):
     """配置日志"""
-    if not app.debug and not app.testing:
+    # 检查是否启用文件日志（通过环境变量或配置）
+    enable_file_logging = os.environ.get('LOG_TO_FILE', 'true').lower() == 'true'
+
+    # 移除debug模式限制，让开发环境也支持文件日志
+    if enable_file_logging and not app.testing:
         # 确保日志目录存在
         log_dir = os.path.dirname(app.config['LOG_FILE'])
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
         # 配置文件日志
-        file_handler = logging.FileHandler(app.config['LOG_FILE'])
+        file_handler = logging.FileHandler(app.config['LOG_FILE'], encoding='utf-8')
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
         ))
@@ -68,7 +72,11 @@ def setup_logging(app):
         app.logger.addHandler(file_handler)
 
         app.logger.setLevel(getattr(logging, app.config['LOG_LEVEL']))
-        app.logger.info('MultiRoleChat startup')
+        app.logger.info('MultiRoleChat startup - File logging enabled')
+
+    # 控制台日志始终启用
+    if app.debug:
+        app.logger.info('MultiRoleChat startup - Debug mode enabled')
 
 
 def register_api(app):
@@ -126,6 +134,10 @@ def register_api(app):
     api.add_resource(MonitoringAlerts, '/api/monitoring/alerts')
     api.add_resource(MonitoringControl, '/api/monitoring/control')
     api.add_resource(MonitoringDashboard, '/api/monitoring/dashboard')
+
+    # LLM对话接口
+    from app.api.llm import register_llm_routes
+    register_llm_routes(api)
 
 
 def register_error_handlers(app):

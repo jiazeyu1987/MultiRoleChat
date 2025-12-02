@@ -115,7 +115,7 @@ class HealthCheckService:
                         from app.services.llm.base import LLMMessage, LLMRole
                         test_messages = [
                             LLMMessage(
-                                role=LLMRole.USER,
+                                role=LLMRole.USER.value,
                                 content="Hello, this is a health check test."
                             )
                         ]

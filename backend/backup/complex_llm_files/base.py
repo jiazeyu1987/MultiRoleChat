@@ -1,11 +1,19 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from enum import Enum
 import asyncio
 import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class LLMRole(Enum):
+    """LLM消息角色枚举"""
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
 
 
 @dataclass
@@ -70,6 +78,35 @@ class BaseLLMService(ABC):
     def __init__(self, config: LLMConfig):
         self.config = config
         self.provider_name = self.__class__.__name__.replace('LLMService', '').lower()
+
+    def _execute_with_retry(self, func, *args, **kwargs):
+        """
+        带重试机制的执行函数
+
+        Args:
+            func: 要执行的函数
+            *args: 函数参数
+            **kwargs: 函数关键字参数
+
+        Returns:
+            函数执行结果
+        """
+        import time
+
+        last_exception = None
+        for attempt in range(self.config.max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                if attempt < self.config.max_retries:
+                    logger.warning(f"LLM调用失败，正在重试 ({attempt + 1}/{self.config.max_retries}): {str(e)}")
+                    time.sleep(self.config.retry_delay)
+                else:
+                    logger.error(f"LLM调用失败，已达到最大重试次数: {str(e)}")
+                    break
+
+        raise LLMError(f"LLM调用失败，已达到最大重试次数: {str(last_exception)}", self.provider_name)
 
     @abstractmethod
     async def generate_response(
