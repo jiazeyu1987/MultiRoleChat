@@ -29,6 +29,10 @@ import {
 // --- LLM测试页面组件 ---
 import LLMTestPage from './LLMTestPage';
 
+// --- API和类型导入 ---
+import { roleApi } from './api/roleApi';
+import { Role as ApiRole, RoleRequest } from './types/role';
+
 // --- 主题配置系统 ---
 
 type ThemeKey = 'blue' | 'purple' | 'emerald' | 'rose' | 'amber';
@@ -123,12 +127,8 @@ const useTheme = () => useContext(ThemeContext);
 
 // --- 类型定义 ---
 
-interface Role {
-  id: number;
-  name: string;
-  prompt: string;
-  created_at: string;
-}
+// 使用导入的ApiRole类型，避免重复定义
+type Role = ApiRole;
 
 interface FlowStep {
   id: number;
@@ -471,15 +471,24 @@ const RoleManagement = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Partial<Role>>({});
+  const [saving, setSaving] = useState(false);
 
   const fetchRoles = async () => {
-    setLoading(true);
-    const res = await api.getRoles();
-    setRoles(res.items);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const response = await roleApi.getRoles();
+      setRoles(response.items);
+    } catch (error: any) {
+      console.error('获取角色列表失败:', error);
+      alert(error.message || '获取角色列表失败');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchRoles(); }, []);
+  useEffect(() => {
+    fetchRoles();
+  }, []);
 
   const handleSave = async () => {
     try {
@@ -487,19 +496,58 @@ const RoleManagement = () => {
         alert("请填写角色名称和提示词");
         return;
       }
-      await api.saveRole(editingRole);
+
+      setSaving(true);
+
+      const roleData: RoleRequest = {
+        name: editingRole.name!,
+        prompt: editingRole.prompt!
+      };
+
+      if (editingRole.id) {
+        // 更新现有角色
+        await roleApi.updateRole(editingRole.id, roleData);
+      } else {
+        // 创建新角色
+        await roleApi.createRole(roleData);
+      }
+
       setIsModalOpen(false);
-      fetchRoles();
-    } catch (e: any) {
-      alert(e.message || "保存失败");
+      setEditingRole({});
+      await fetchRoles(); // 重新获取列表
+    } catch (error: any) {
+      console.error('保存角色失败:', error);
+      alert(error.message || '保存失败');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("确认删除该角色吗？")) {
-      await api.deleteRole(id);
-      fetchRoles();
+  const handleDelete = async (id: number, name: string) => {
+    if (confirm(`确认删除角色"${name}"吗？`)) {
+      try {
+        await roleApi.deleteRole(id);
+        await fetchRoles(); // 重新获取列表
+      } catch (error: any) {
+        console.error('删除角色失败:', error);
+        alert(error.message || '删除失败');
+      }
     }
+  };
+
+  const openEditModal = (role: Role) => {
+    setEditingRole(role);
+    setIsModalOpen(true);
+  };
+
+  const openCreateModal = () => {
+    setEditingRole({});
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingRole({});
   };
 
   return (
@@ -509,74 +557,98 @@ const RoleManagement = () => {
           <h1 className="text-2xl font-bold text-gray-900">角色管理</h1>
           <p className="text-gray-500 text-sm mt-1">创建角色并定义其核心 Prompt</p>
         </div>
-        <Button onClick={() => { setEditingRole({}); setIsModalOpen(true); }} icon={Plus}>新建角色</Button>
+        <Button onClick={openCreateModal} icon={Plus} disabled={loading}>新建角色</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {roles.map(role => (
-          <Card key={role.id} className={`hover:shadow-md transition-shadow hover:border-${theme.name === '商务蓝' ? 'blue' : 'gray'}-300`}>
-            <div className="flex justify-between items-center h-full">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${theme.iconBg}`}>
-                  {role.name[0]}
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {roles.map(role => (
+            <Card key={role.id} className={`hover:shadow-md transition-shadow hover:border-${theme.name === '商务蓝' ? 'blue' : 'gray'}-300`}>
+              <div className="flex justify-between items-center h-full">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${theme.iconBg}`}>
+                    {role.name[0]}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">{role.name}</h3>
+                    <p className="text-xs text-gray-500">
+                      创建于 {new Date(role.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-gray-900">{role.name}</h3>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => openEditModal(role)}
+                    className={`p-2 text-gray-400 ${theme.textHover} hover:bg-gray-50 rounded-full transition-colors`}
+                    title="编辑角色"
+                  >
+                    <Edit3 size={18} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(role.id, role.name)}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                    title="删除角色"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-1">
-                <button 
-                  onClick={() => { setEditingRole(role); setIsModalOpen(true); }} 
-                  className={`p-2 text-gray-400 ${theme.textHover} hover:bg-gray-50 rounded-full transition-colors`}
-                >
-                  <Edit3 size={18} />
-                </button>
-                <button 
-                  onClick={() => handleDelete(role.id)} 
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
+            </Card>
+          ))}
+          {roles.length === 0 && (
+            <div className="col-span-full py-10">
+              <EmptyState message="暂无角色，请点击右上角新建" />
             </div>
-          </Card>
-        ))}
-        {roles.length === 0 && !loading && (
-          <div className="col-span-full py-10">
-            <EmptyState message="暂无角色，请点击右上角新建" />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      <Modal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeModal}
         title={editingRole.id ? "编辑角色" : "新建角色"}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>取消</Button>
-            <Button onClick={handleSave}>保存</Button>
+            <Button variant="secondary" onClick={closeModal} disabled={saving}>
+              取消
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? '保存中...' : '保存'}
+            </Button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">角色名称 <span className="text-red-500">*</span></label>
-            <input 
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              角色名称 <span className="text-red-500">*</span>
+            </label>
+            <input
               className={`w-full border rounded-lg px-3 py-2 ${theme.ring}`}
-              value={editingRole.name || ''} 
+              value={editingRole.name || ''}
               onChange={e => setEditingRole({...editingRole, name: e.target.value})}
               placeholder="请输入唯一角色名称"
+              disabled={saving}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">角色提示词 (Prompt) <span className="text-red-500">*</span></label>
-            <textarea 
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              角色提示词 (Prompt) <span className="text-red-500">*</span>
+            </label>
+            <textarea
               className={`w-full border rounded-lg px-3 py-2 h-40 ${theme.ring}`}
               value={editingRole.prompt || ''}
               onChange={e => setEditingRole({...editingRole, prompt: e.target.value})}
               placeholder="请输入角色的设定、风格、行为准则等提示词..."
+              disabled={saving}
             />
+            <p className="text-xs text-gray-500 mt-1">
+              提示词用于定义角色的性格、专业背景、说话风格等特征
+            </p>
           </div>
         </div>
       </Modal>

@@ -17,8 +17,6 @@ class RoleList(Resource):
             page_size = min(request.args.get('page_size', current_app.config['DEFAULT_PAGE_SIZE'], type=int),
                            current_app.config['MAX_PAGE_SIZE'])
             search = request.args.get('search', '', type=str)
-            role_type = request.args.get('type', '', type=str)
-            is_builtin = request.args.get('is_builtin', '', type=str)
 
             # 构建查询
             query = Role.query
@@ -27,20 +25,10 @@ class RoleList(Resource):
             if search:
                 query = query.filter(
                     or_(Role.name.contains(search),
-                        Role.description.contains(search),
-                        Role.style.contains(search))
+                        Role.prompt.contains(search))
                 )
 
-            # 角色类型过滤
-            if role_type:
-                query = query.filter(Role.type == role_type)
-
-            # 是否系统预置过滤
-            if is_builtin.lower() == 'true':
-                query = query.filter(Role.is_builtin == True)
-            elif is_builtin.lower() == 'false':
-                query = query.filter(Role.is_builtin == False)
-
+        
             # 分页查询
             pagination = query.order_by(Role.created_at.desc()).paginate(
                 page=page, per_page=page_size, error_out=False
@@ -103,12 +91,7 @@ class RoleList(Resource):
             # 创建角色
             role = Role(
                 name=data['name'],
-                type=data['type'],
-                description=data['description'],
-                style=data.get('style'),
-                constraints=data.get('constraints'),
-                focus_points_list=data.get('focus_points', []),
-                is_builtin=False  # 通过API创建的角色都不是系统预置角色
+                prompt=data['prompt']
             )
 
             db.session.add(role)
@@ -173,16 +156,7 @@ class RoleDetail(Resource):
                     'message': '角色不存在'
                 }, 404
 
-            # 系统预置角色不允许修改某些字段
-            if role.is_builtin:
-                json_data = request.get_json()
-                if json_data and 'name' in json_data:
-                    return {
-                        'success': False,
-                        'error_code': 'FORBIDDEN',
-                        'message': '系统预置角色不允许修改名称'
-                    }, 403
-
+          
             json_data = request.get_json()
             if not json_data:
                 return {
@@ -204,12 +178,9 @@ class RoleDetail(Resource):
                 }, 400
 
             # 更新角色信息
-            for field in ['name', 'type', 'description', 'style', 'constraints']:
+            for field in ['name', 'prompt']:
                 if field in data:
                     setattr(role, field, data[field])
-
-            if 'focus_points' in data:
-                role.focus_points_list = data['focus_points']
 
             db.session.commit()
 
@@ -241,14 +212,7 @@ class RoleDetail(Resource):
                     'message': '角色不存在'
                 }, 404
 
-            # 系统预置角色不允许删除
-            if role.is_builtin:
-                return {
-                    'success': False,
-                    'error_code': 'FORBIDDEN',
-                    'message': '系统预置角色不允许删除'
-                }, 403
-
+            
             # 检查角色是否被会话使用
             from app.models import SessionRole
             if SessionRole.query.filter_by(role_id=role_id).first():
