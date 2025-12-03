@@ -3,89 +3,76 @@ import json
 
 
 class FlowStepSchema(Schema):
-    """流程步骤 Schema，适配前端数据结构与后端模型"""
+    """流程步骤 Schema - 完全匹配前端接口"""
 
     id = fields.Integer(dump_only=True)
     flow_template_id = fields.Integer(dump_only=True)
     order = fields.Integer(required=True, validate=validate.Range(min=1))
     speaker_role_ref = fields.String(required=True, validate=validate.Length(min=1, max=50))
-    target_role_ref = fields.String(validate=validate.Length(max=50))
+    target_role_ref = fields.String(allow_none=True, validate=validate.Length(max=50))
 
-    # 任务类型（前端已做校验，这里不再限制具体枚举，统一走服务层验证）
-    task_type = fields.String(required=True)
+    # 严格匹配前端枚举
+    task_type = fields.String(
+        required=True,
+        validate=validate.OneOf([
+            'ask_question', 'answer_question', 'review_answer', 'question',
+            'summarize', 'evaluate', 'suggest', 'challenge', 'support', 'conclude'
+        ])
+    )
 
-    # 支持字符串或数组格式的上下文范围
-    context_scope = fields.Raw(required=True)
+    # 支持字符串或数组格式的上下文范围 - 与前端接口一致
+    context_scope = fields.Raw(required=True, validate=lambda x: x is not None)
 
-    # 下列字段在数据库中以 JSON 字符串存储，通过属性映射为字典，避免 Dict 字段直接处理字符串
-    context_param = fields.Dict(attribute='context_param_dict')
-    logic_config = fields.Dict(attribute='logic_config_dict')
-    loop_config = fields.Dict(attribute='loop_config_dict')
-    condition_config = fields.Dict(attribute='condition_config_dict')
-
+    # 直接使用前端格式，模型属性会自动处理JSON序列化
+    context_param = fields.Dict(allow_none=True)
+    logic_config = fields.Dict(allow_none=True)
     next_step_id = fields.Integer(allow_none=True)
-    description = fields.String(validate=validate.Length(max=500))
+    description = fields.String(allow_none=True, validate=validate.Length(max=500))
 
     def load(self, data, **kwargs):
-        """重写 load，用于适配前端数据格式（主要处理 context_scope 及旧字段合并逻辑）"""
+        """简化的load方法 - 直接处理前端格式"""
         try:
             if isinstance(data, dict):
-                # 处理 context_scope 字段：支持字符串 / 数组 / 对象
+                # 自动处理context_scope的JSON序列化
                 if 'context_scope' in data:
                     context_scope = data['context_scope']
                     if isinstance(context_scope, (list, dict)):
-                        # 前端传数组或对象时，序列化为 JSON 字符串存库
+                        # 数组或对象转换为JSON字符串存储
                         data['context_scope'] = json.dumps(context_scope, ensure_ascii=False)
                     else:
-                        # 其它情况统一转成字符串
-                        data['context_scope'] = str(context_scope) if context_scope is not None else None
-
-                # 如果只有旧字段 loop_config / condition_config 而没有 logic_config，则合并到 logic_config
-                if 'logic_config' not in data and ('loop_config' in data or 'condition_config' in data):
-                    logic_config: dict = {}
-
-                    loop_cfg = data.get('loop_config')
-                    if isinstance(loop_cfg, dict):
-                        logic_config.update(loop_cfg)
-
-                    cond_cfg = data.get('condition_config')
-                    if isinstance(cond_cfg, dict):
-                        logic_config.update(cond_cfg)
-
-                    data['logic_config'] = logic_config
+                        # 字符串直接存储
+                        data['context_scope'] = str(context_scope) if context_scope is not None else 'all'
 
             return super().load(data, **kwargs)
         except Exception as e:
-            # 记录详细错误信息，便于排查
             import logging
             logging.error(f"FlowStepSchema.load() 处理数据时发生错误: {e}")
             logging.error(f"输入数据: {data}")
-            logging.error(f"错误类型: {type(e)}")
             raise ValidationError(f"数据处理失败: {str(e)}")
 
     @validates('context_param')
     def validate_context_param(self, value):
-        """验证上下文参数必须为字典"""
-        if value and not isinstance(value, dict):
+        """验证上下文参数必须为字典或None"""
+        if value is not None and not isinstance(value, dict):
             raise ValidationError('上下文参数必须是字典格式')
 
 
 class FlowTemplateSchema(Schema):
-    """流程模板 Schema，适配前端数据结构与后端模型"""
+    """流程模板 Schema - 完全匹配前端接口"""
 
     id = fields.Integer(dump_only=True)
     name = fields.String(required=True, validate=validate.Length(min=1, max=200))
-    topic = fields.String(validate=validate.Length(max=200))
+    topic = fields.String(allow_none=True, validate=validate.Length(max=200))
     type = fields.String(
         required=True,
         validate=validate.OneOf(['teaching', 'review', 'debate', 'discussion', 'interview', 'other'])
     )
-    description = fields.String(validate=validate.Length(max=1000))
-    version = fields.String(validate=validate.Length(max=20))
-    is_active = fields.Boolean()
+    description = fields.String(allow_none=True, validate=validate.Length(max=1000))
+    version = fields.String(allow_none=True, validate=validate.Length(max=20))
+    is_active = fields.Boolean(allow_none=True)
 
-    # 终止条件配置，同样在数据库中以 JSON 字符串存储，这里映射为字典
-    termination_config = fields.Dict(attribute='termination_config_dict')
+    # 终止条件配置 - 使用属性映射自动处理JSON序列化
+    termination_config = fields.Dict(attribute='termination_config_dict', allow_none=True)
 
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)

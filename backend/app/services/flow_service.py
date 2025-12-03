@@ -58,25 +58,28 @@ class FlowTemplateService:
             raise DuplicateTemplateNameError(f"模板名称 '{template_data['name']}' 已存在")
 
         try:
-            # 提取模板基本信息
+            # 直接使用前端数据，让数据库处理默认值
             template_info = {
                 'name': template_data['name'],
-                'type': template_data['type'],
-                'description': template_data.get('description', ''),
-                'version': template_data.get('version', '1.0.0'),
-                'is_active': template_data.get('is_active', True)
+                'type': template_data['type']
             }
 
-            # 添加topic字段支持前端
-            if 'topic' in template_data:
-                template_info['topic'] = template_data['topic']
+            # 添加可选字段，如果存在则使用
+            optional_fields = ['topic', 'description', 'version', 'is_active', 'termination_config']
+            for field in optional_fields:
+                if field in template_data:
+                    if field == 'termination_config':
+                        # 特殊处理termination_config
+                        pass  # 在创建对象后设置
+                    else:
+                        template_info[field] = template_data[field]
 
             current_app.logger.info(f"模板基本信息: {json.dumps(template_info, ensure_ascii=False, indent=2)}")
 
             # 创建模板
             template = FlowTemplate(**template_info)
 
-            # 设置结束条件配置
+            # 设置termination_config
             if 'termination_config' in template_data:
                 template.termination_config_dict = template_data['termination_config']
 
@@ -105,7 +108,7 @@ class FlowTemplateService:
     @staticmethod
     def _create_template_steps(template_id: int, steps_data: List[Dict[str, Any]]) -> None:
         """
-        创建模板步骤，完全适配前端数据结构
+        创建模板步骤 - 简化版本，直接使用前端格式
 
         Args:
             template_id: 模板ID
@@ -121,47 +124,20 @@ class FlowTemplateService:
         # 验证步骤数据
         FlowTemplateService._validate_steps_data(steps_data)
 
+        # 直接创建步骤对象，模型属性会自动处理JSON序列化
         steps = []
-        for index, step_data in enumerate(steps_data):
-            current_app.logger.info(f"处理步骤 {index + 1}: {step_data.get('speaker_role_ref')}")
-
-            # 处理context_scope字段：支持字符串或数组格式
-            context_scope = step_data.get('context_scope')
-            if isinstance(context_scope, (list, dict)):
-                # 如果是数组或对象，转换为JSON字符串存储
-                context_scope = json.dumps(context_scope, ensure_ascii=False)
-            else:
-                # 如果是字符串，直接使用
-                context_scope = str(context_scope) if context_scope is not None else ''
-
-            # 处理logic_config字段：适配前端logic_config，并确保为字典
-            logic_config = step_data.get('logic_config') or {}
-            if not isinstance(logic_config, dict):
-                # 如果是字符串或其他可解析为JSON的格式，尝试解析一次
-                try:
-                    if isinstance(logic_config, str):
-                        parsed = json.loads(logic_config)
-                        logic_config = parsed if isinstance(parsed, dict) else {}
-                    else:
-                        # 尝试从(key, value)序列构造，失败则忽略
-                        logic_config = dict(logic_config)  # type: ignore[arg-type]
-                except Exception:
-                    logic_config = {}
-
+        for step_data in steps_data:
             step = FlowStep(
                 flow_template_id=template_id,
                 order=step_data['order'],
                 speaker_role_ref=step_data['speaker_role_ref'],
                 target_role_ref=step_data.get('target_role_ref'),
-                task_type=step_data['task_type'],  # 扩展支持前端所有类型
-                context_scope=context_scope,  # 存储处理后的格式
-                context_param_dict=step_data.get('context_param', {}),
-                logic_config_dict=logic_config,  # 使用统一的logic_config
-                # 保留旧字段以兼容现有数据
-                loop_config_dict=step_data.get('loop_config', {}),
-                condition_config_dict=step_data.get('condition_config', {}),
+                task_type=step_data['task_type'],
+                context_scope=step_data['context_scope'],  # 属性会自动处理JSON
+                context_param=step_data.get('context_param'),   # 属性会自动处理JSON
+                logic_config=step_data.get('logic_config'),     # 属性会自动处理JSON
                 next_step_id=step_data.get('next_step_id'),
-                description=step_data.get('description', '')
+                description=step_data.get('description')
             )
             steps.append(step)
 

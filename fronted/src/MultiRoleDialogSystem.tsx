@@ -737,9 +737,9 @@ const FlowManagement = () => {
         // 判断是新建还是更新
         const isUpdate = flow.id && flow.id > 0;
 
-        // normalize steps for API: strip frontend-only id field
+        // normalize steps for API: strip frontend-only id and flow_template_id fields
         const normalizedSteps = (flow.steps || []).map((step: any) => {
-          const { id, ...rest } = step;
+          const { id, flow_template_id, ...rest } = step;
           return rest;
         });
 

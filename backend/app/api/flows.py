@@ -95,7 +95,7 @@ class FlowList(Resource):
             current_app.logger.info(f"调用服务层创建模板: FlowTemplateService.create_template()")
             template = FlowTemplateService.create_template(data)  # 使用验证后的数据
 
-            # 返回创建的模板信息
+            # 直接返回模板数据，移除包装层
             flow_schema = FlowTemplateSchema()
             result = flow_schema.dump(template)
             current_app.logger.info(f"服务层返回结果: {json.dumps(result, ensure_ascii=False, indent=2)}")
@@ -108,26 +108,16 @@ class FlowList(Resource):
             }, 201
 
         except DuplicateTemplateNameError as e:
-            return {
-                'success': False,
-                'error_code': 'DUPLICATE_NAME',
-                'message': str(e)
-            }, 400
+            current_app.logger.error(f"创建流程模板失败: {str(e)}")
+            return {'error': str(e)}, 400
 
         except StepValidationError as e:
-            return {
-                'success': False,
-                'error_code': 'STEP_VALIDATION_ERROR',
-                'message': str(e)
-            }, 400
+            current_app.logger.error(f"创建流程模板失败: {str(e)}")
+            return {'error': str(e)}, 400
 
         except Exception as e:
             current_app.logger.error(f"创建流程模板失败: {str(e)}")
-            return {
-                'success': False,
-                'error_code': 'INTERNAL_ERROR',
-                'message': '创建流程模板失败'
-            }, 500
+            return {'error': '创建流程模板失败'}, 500
 
 
 class FlowDetail(Resource):
