@@ -30,11 +30,11 @@ class FlowTemplateUpdateSchema(Schema):
     type = fields.String(validate=validate.OneOf([
         'teaching', 'review', 'debate', 'discussion', 'interview', 'other'
     ]))
-    description = fields.String(validate=validate.Length(max=1000))
-    version = fields.String(validate=validate.Length(max=20))
-    is_active = fields.Boolean()
-    termination_config = fields.Dict()  # 结束条件配置
-    steps = fields.List(fields.Nested(FlowStepSchema()))  # 步骤列表，更新时可选
+    description = fields.String(allow_none=True, validate=validate.Length(max=1000))
+    version = fields.String(allow_none=True, validate=validate.Length(max=20))
+    is_active = fields.Boolean(allow_none=True)
+    termination_config = fields.Dict(allow_none=True)  # 结束条件配置
+    steps = fields.List(fields.Nested(FlowStepSchema()), allow_none=True)  # 步骤列表，更新时可选
 
     @validates('name')
     def validate_name(self, value):
