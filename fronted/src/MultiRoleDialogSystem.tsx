@@ -32,6 +32,7 @@ import LLMTestPage from './LLMTestPage';
 
 // --- API和类型导入 ---
 import { roleApi } from './api/roleApi';
+import { flowApi } from './api/flowApi';
 import { Role as ApiRole, RoleRequest } from './types/role';
 
 // --- 主题配置系统 ---
@@ -643,9 +644,9 @@ const FlowManagement = () => {
   const [editingFlow, setEditingFlow] = useState<Partial<FlowTemplate> | null>(null);
 
   useEffect(() => {
-    // TODO: Replace with real API when available
-    setFlows([]); // Temporary empty flows
-  }, [editingFlow]); 
+    // 加载流程模板列表
+    fetchFlows();
+  }, []); 
 
   const handleCreate = () => {
     setEditingFlow({ name: "新对话流程", topic: "", is_active: true, steps: [] });
@@ -656,11 +657,115 @@ const FlowManagement = () => {
     setEditingFlow(flow); // Use the flow directly for now
   }
 
+  const fetchFlows = async () => {
+    try {
+      const result = await flowApi.getFlows();
+      setFlows(result.items);
+    } catch (error) {
+      console.error('获取流程模板失败:', error);
+    }
+  };
+
+  // 日志格式化函数
+  const formatTemplateForLog = (flow: any) => {
+    const timestamp = new Date().toISOString();
+
+    console.log(`=== 模板保存开始 [${timestamp}] ===`);
+
+    // 基本模板信息
+    console.log('模板基本信息：');
+    console.log(`- ID: ${flow.id || '新模板'}`);
+    console.log(`- 名称: "${flow.name || '未命名模板'}"`);
+    console.log(`- 主题: "${flow.topic || '无主题'}"`);
+    console.log(`- 状态: ${flow.is_active ? 'active' : 'inactive'}`);
+    console.log(`- 步骤数量: ${flow.steps?.length || 0}`);
+
+    // 详细步骤信息
+    if (flow.steps && flow.steps.length > 0) {
+      console.log('\n模板步骤详情：');
+      flow.steps.forEach((step: any, index: number) => {
+        console.log(`步骤 ${index + 1}:`);
+        console.log(`  - 顺序: ${step.order}`);
+        console.log(`  - 说话角色: ${step.speaker_role_ref}`);
+        console.log(`  - 目标角色: ${step.target_role_ref || '无'}`);
+        console.log(`  - 任务类型: ${step.task_type}`);
+        console.log(`  - 上下文范围: ${step.context_scope}`);
+        console.log(`  - 上下文参数: ${JSON.stringify(step.context_param || {})}`);
+        console.log(`  - 逻辑配置: ${JSON.stringify(step.logic_config || {})}`);
+        console.log(`  - 描述: ${step.description || '无描述'}`);
+
+        if (step.next_step_id) {
+          console.log(`  - 下一步ID: ${step.next_step_id}`);
+        }
+
+        // 添加分隔符
+        if (index < flow.steps.length - 1) {
+          console.log('');
+        }
+      });
+    }
+
+    // 完整数据快照
+    console.log('\n完整数据快照：');
+    console.log(JSON.stringify(flow, null, 2));
+
+    console.log(`=== 模板保存完成 ===`);
+  };
+
   if (editingFlow) {
     return <FlowEditor flow={editingFlow} onSave={async (flow: any) => {
-      // TODO: Replace with real API when available
-      console.log("Flow saved:", flow);
-      setEditingFlow(null);
+      // 保存前详细日志记录
+      formatTemplateForLog(flow);
+
+      try {
+        console.log("开始调用后端API保存模板...");
+
+        // 判断是新建还是更新
+        const isUpdate = flow.id && flow.id > 0;
+
+        // normalize steps for API: strip frontend-only id field
+        const normalizedSteps = (flow.steps || []).map((step: any) => {
+          const { id, ...rest } = step;
+          return rest;
+        });
+
+        let result;
+        if (isUpdate) {
+          console.log(`更新现有模板，ID: ${flow.id}`);
+          result = await flowApi.updateFlow(flow.id, {
+            name: flow.name,
+            topic: flow.topic,
+            type: flow.type || 'teaching',
+            description: flow.description,
+            version: flow.version,
+            is_active: flow.is_active,
+            termination_config: flow.termination_config,
+            steps: normalizedSteps
+          });
+        } else {
+          console.log("创建新模板");
+          result = await flowApi.createFlow({
+            name: flow.name,
+            topic: flow.topic,
+            type: flow.type || 'teaching',
+            description: flow.description,
+            version: flow.version,
+            is_active: flow.is_active,
+            termination_config: flow.termination_config,
+            steps: normalizedSteps
+          });
+        }
+
+        console.log("API调用成功，返回结果:", result);
+
+        // 刷新模板列表
+        await fetchFlows();
+
+        setEditingFlow(null);
+      } catch (error) {
+        console.error("保存模板失败:", error);
+        alert(`保存模板失败: ${error.message || '未知错误'}`);
+      }
     }} onCancel={() => setEditingFlow(null)} />;
   }
 

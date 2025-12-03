@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **Multi-Role Dialogue System** project designed to create configurable, multi-role conversation environments. The project is **FULLY IMPLEMENTED** and production-ready.
-
-The system allows users to orchestrate conversations between multiple virtual roles (teachers, students, experts, officials, etc.) around specific topics using structured dialogue flows with advanced features like loops, conditions, and real-time execution.
+This is a **Multi-Role Dialogue System** project designed to create configurable, multi-role conversation environments. The system allows users to orchestrate conversations between multiple virtual roles (teachers, students, experts, officials, etc.) around specific topics using structured dialogue flows with advanced features like loops, conditions, and real-time execution.
 
 ## Current Architecture
 
@@ -14,7 +12,7 @@ The system allows users to orchestrate conversations between multiple virtual ro
 - **Framework**: React 18.2.0 with TypeScript, built with Vite
 - **UI Library**: Tailwind CSS 3.3.0 with Lucide React icons
 - **Key Components**:
-  - `MultiRoleDialogSystem.tsx` (60KB) - Main application with full UI
+  - `MultiRoleDialogSystem.tsx` (63KB) - Main application with full UI
   - `LLMTestPage.tsx` (10KB) - LLM testing interface
   - Theme system with 5 color schemes
 - **Features**:
@@ -28,10 +26,10 @@ The system allows users to orchestrate conversations between multiple virtual ro
 - **Framework**: Flask REST API with application factory pattern
 - **Database**: SQLAlchemy ORM with migrations (SQLite default, PostgreSQL/MySQL support)
 - **Core Services** (`backend/app/services/`):
-  - **`flow_engine_service.py`** (22KB) - Advanced dialogue flow orchestration with loops/conditions
+  - **`flow_engine_service.py`** (24KB) - Advanced dialogue flow orchestration with loops/conditions
+  - **`flow_service.py`** (16KB) - Flow template management
   - **`session_service.py`** (18KB) - Conversation lifecycle management
   - **`message_service.py`** (16KB) - Message handling and management
-  - **`flow_service.py`** (14KB) - Flow template management
   - **`role_service.py`** (2KB) - Role configuration management
   - **LLM Services** (`services/llm/`):
     - `simple_llm.py` (15KB) - Simplified Anthropic Claude integration
@@ -42,19 +40,19 @@ The system allows users to orchestrate conversations between multiple virtual ro
     - `monitoring_service.py` (17KB) - Performance metrics
 
 ### Data Models (`backend/app/models/`)
-- **`role.py`** - Character definitions, personality, speaking style
+- **`role.py`** - Character definitions with unified prompt field
 - **`flow.py`** - FlowTemplate and FlowStep models with JSON configs
 - **`session.py`** - Session management with role assignments
 - **`message.py`** - Individual messages with context tracking
 
 ### API Layer (`backend/app/api/`)
 - **RESTful endpoints** with Flask-RESTful:
-  - `/api/roles` - Role management (9KB)
-  - `/api/flows` - Flow template operations (11KB)
-  - `/api/sessions` - Session management (15KB)
-  - `/api/messages` - Message operations (14KB)
-  - `/api/llm` - LLM conversation endpoints (12KB)
-  - `/api/monitoring` - System monitoring (14KB)
+  - `/api/roles` - Role management
+  - `/api/flows` - Flow template operations
+  - `/api/sessions` - Session management
+  - `/api/messages` - Message operations
+  - `/api/llm` - LLM conversation endpoints
+  - `/api/monitoring` - System monitoring
 
 ## Development Commands
 
@@ -66,7 +64,8 @@ cd backend
 pip install -r requirements.txt
 
 # Set up environment (copy from .env.example)
-cp ../.env.example .env
+cp .env.example .env
+# Edit .env with your configuration
 
 # Initialize database
 python run.py init-db
@@ -103,12 +102,13 @@ npm run lint
 ```
 
 ### Environment Configuration
-Key environment variables (see `.env.example`):
-- `ANTHROPIC_API_KEY` - Required for Claude integration
-- `DATABASE_URL` - Database connection string
+Key environment variables (see `backend/.env.example`):
 - `FLASK_ENV` - Environment (development/production)
+- `DATABASE_URL` - Database connection string
+- `OPENAI_API_KEY` - OpenAI API key for LLM integration
+- `LLM_DEFAULT_PROVIDER` - Default LLM provider
 - `LOG_LEVEL` - Logging level
-- `API_HOST` / `API_PORT` - Server binding configuration
+- `DEFAULT_PAGE_SIZE` - Pagination settings
 
 ### Testing
 No automated test suite is currently configured. Manual testing can be done via:
@@ -123,9 +123,11 @@ No automated test suite is currently configured. Manual testing can be done via:
 - Multi-step conversation orchestration with context management
 - Dynamic role assignment and speaker switching
 - Flow template copying and versioning
+- Termination condition configuration
 
 ### 2. LLM Integration
 - **Simplified Anthropic Claude integration** with automatic API key detection
+- OpenAI API integration as alternative provider
 - Comprehensive request logging and monitoring
 - Async processing with timeout and retry handling
 - Context-aware conversation management
@@ -146,9 +148,9 @@ No automated test suite is currently configured. Manual testing can be done via:
 
 When working with this project:
 
-1. **LLM Integration**: The system uses simplified Anthropic Claude integration via `services/llm/simple_llm.py`. It automatically detects API keys from environment or Claude CLI configuration.
+1. **LLM Integration**: The system supports both Anthropic Claude and OpenAI integration via `services/llm/`. Configure API keys in environment variables.
 
-2. **Flow Engine**: Advanced dialogue flows are configured using JSON structures stored in the database. The flow engine (`services/flow_engine_service.py`) handles complex logic including loops and conditions.
+2. **Flow Engine**: Advanced dialogue flows are configured using JSON structures stored in the database. The flow engine (`services/flow_engine_service.py`) handles complex logic including loops, conditions, and termination criteria.
 
 3. **Database Management**: Use Flask-Migrate for schema changes. Built-in roles and flow templates can be created with the provided CLI commands.
 
@@ -157,13 +159,14 @@ When working with this project:
 5. **Monitoring**: The system includes comprehensive health monitoring and LLM request logging. Check `/api/health` for system status and `logs/` directories for detailed logs.
 
 6. **Frontend Note**: The frontend directory is named `fronted` (not `frontend`) - this is intentional and should be preserved.
-7. **Database Warnings**: The application shows SQLAlchemy relationship warnings on startup. These are non-critical but should be addressed in production by adding proper `overlaps` parameters to relationship definitions.
+
+7. **Role Model**: The Role model uses a unified `prompt` field that contains all role information (description, style, constraints, focus points).
 
 ## Architecture Patterns
 
 ### Service Layer Organization
 - **Core Services**: Business logic separated by domain (roles, flows, sessions, messages)
-- **LLM Services**: Isolated LLM integration with fallback mechanisms
+- **LLM Services**: Isolated LLM integration with provider abstraction
 - **Monitoring Services**: Health checks and performance tracking
 
 ### Data Flow
@@ -175,7 +178,7 @@ When working with this project:
 
 ### Key Technical Decisions
 
-- **LLM Provider**: Focused on Anthropic Claude with simplified integration
+- **LLM Provider**: Multi-provider support (Anthropic Claude, OpenAI) with simplified integration
 - **Database**: SQLAlchemy ORM with JSON fields for flexible configuration
 - **Frontend**: React + TypeScript with Vite for fast development
 - **API Design**: Flask-RESTful with consistent error handling

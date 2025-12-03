@@ -3,8 +3,9 @@ from .flow import FlowStepSchema
 
 
 class FlowTemplateCreateSchema(Schema):
-    """流程模板创建模式"""
+    """流程模板创建模式，完全适配前端FlowTemplateRequest结构"""
     name = fields.String(required=True, validate=validate.Length(min=1, max=200))
+    topic = fields.String(validate=validate.Length(max=200))  # 添加topic字段支持前端
     type = fields.String(required=True, validate=validate.OneOf([
         'teaching', 'review', 'debate', 'discussion', 'interview', 'other'
     ]))
@@ -12,7 +13,7 @@ class FlowTemplateCreateSchema(Schema):
     version = fields.String(validate=validate.Length(max=20))
     is_active = fields.Boolean()
     termination_config = fields.Dict()  # 结束条件配置
-    steps = fields.List(fields.Nested(FlowStepSchema()), required=True)  # 步骤列表，创建时必须
+    steps = fields.List(fields.Nested(FlowStepSchema()), required=False)  # 步骤列表，前端允许为空
 
     @validates('name')
     def validate_name(self, value):
@@ -23,8 +24,9 @@ class FlowTemplateCreateSchema(Schema):
 
 
 class FlowTemplateUpdateSchema(Schema):
-    """流程模板更新模式"""
+    """流程模板更新模式，完全适配前端FlowTemplateRequest结构"""
     name = fields.String(validate=validate.Length(min=1, max=200))
+    topic = fields.String(validate=validate.Length(max=200))  # 添加topic字段支持前端
     type = fields.String(validate=validate.OneOf([
         'teaching', 'review', 'debate', 'discussion', 'interview', 'other'
     ]))

@@ -77,11 +77,12 @@ export const flowApi = {
       search: params?.search,
       page: params?.page || 1,
       page_size: params?.page_size || 20,
-      template_type: params?.template_type,
+      // 后端使用的是 type 参数，这里做字段映射
+      type: params?.template_type,
       is_active: params?.is_active,
     };
 
-    const response = await apiClient.get<FlowListResponse>('flows', queryParams);
+    const response = await apiClient.get<FlowListResponse>('/api/flows', queryParams);
 
     return {
       items: response.flows,
@@ -96,28 +97,30 @@ export const flowApi = {
    * 获取流程模板详情
    */
   async getFlow(id: number): Promise<FlowTemplate> {
-    return apiClient.get<FlowTemplate>(`flows/${id}`);
+    return apiClient.get<FlowTemplate>(`/api/flows/${id}`);
   },
 
   /**
    * 创建新的流程模板
    */
   async createFlow(flowData: FlowTemplateRequest): Promise<FlowTemplate> {
-    return apiClient.post<FlowTemplate>('flows', flowData);
+    return apiClient.post<FlowTemplate>('/api/flows', flowData);
   },
 
   /**
    * 更新流程模板
    */
   async updateFlow(id: number, flowData: Partial<FlowTemplateRequest>): Promise<FlowTemplate> {
-    return apiClient.put<FlowTemplate>(`flows/${id}`, flowData);
+    return apiClient.put<FlowTemplate>(`/api/flows/${id}`, flowData);
   },
 
   /**
    * 删除流程模板
    */
   async deleteFlow(id: number, softDelete: boolean = true): Promise<void> {
-    const endpoint = softDelete ? `flows/${id}?soft_delete=true` : `flows/${id}`;
+    const endpoint = softDelete
+      ? `/api/flows/${id}?soft_delete=true`
+      : `/api/flows/${id}`;
     return apiClient.delete<void>(endpoint);
   },
 
@@ -125,7 +128,8 @@ export const flowApi = {
    * 复制流程模板
    */
   async duplicateFlow(id: number, newName: string, description?: string): Promise<FlowTemplate> {
-    return apiClient.post<FlowTemplate>(`flows/${id}/duplicate`, {
+    // 后端对应路由为 /api/flows/<id>/copy
+    return apiClient.post<FlowTemplate>(`/api/flows/${id}/copy`, {
       name: newName,
       description: description,
     });
@@ -140,6 +144,6 @@ export const flowApi = {
     inactive_templates: number;
     type_distribution: Record<string, number>;
   }> {
-    return apiClient.get<any>('flows/statistics');
+    return apiClient.get<any>('/api/flows/statistics');
   },
 };

@@ -64,8 +64,13 @@ class FlowList(Resource):
     def post(self):
         """创建新的流程模板"""
         try:
+            current_app.logger.info("=== 创建流程模板开始 ===")
+
             json_data = request.get_json()
+            current_app.logger.info(f"原始请求数据: {json.dumps(json_data, ensure_ascii=False, indent=2)}")
+
             if not json_data:
+                current_app.logger.error("请求体为空")
                 return {
                     'success': False,
                     'error_code': 'INVALID_REQUEST',
@@ -76,7 +81,9 @@ class FlowList(Resource):
             create_schema = FlowTemplateCreateSchema()
             try:
                 data = create_schema.load(json_data)
+                current_app.logger.info(f"Schema验证后数据: {json.dumps(data, ensure_ascii=False, indent=2)}")
             except Exception as e:
+                current_app.logger.error(f"数据验证失败: {str(e)}")
                 return {
                     'success': False,
                     'error_code': 'VALIDATION_ERROR',
@@ -85,11 +92,15 @@ class FlowList(Resource):
                 }, 400
 
             # 调用服务层创建模板
-            template = FlowTemplateService.create_template(json_data)
+            current_app.logger.info(f"调用服务层创建模板: FlowTemplateService.create_template()")
+            template = FlowTemplateService.create_template(data)  # 使用验证后的数据
 
             # 返回创建的模板信息
             flow_schema = FlowTemplateSchema()
             result = flow_schema.dump(template)
+            current_app.logger.info(f"服务层返回结果: {json.dumps(result, ensure_ascii=False, indent=2)}")
+
+            current_app.logger.info("=== 创建流程模板完成 ===")
             return {
                 'success': True,
                 'data': result,
@@ -153,8 +164,13 @@ class FlowDetail(Resource):
     def put(self, flow_id):
         """更新流程模板"""
         try:
+            current_app.logger.info(f"=== 更新流程模板开始 (ID: {flow_id}) ===")
+
             json_data = request.get_json()
+            current_app.logger.info(f"原始请求数据: {json.dumps(json_data, ensure_ascii=False, indent=2)}")
+
             if not json_data:
+                current_app.logger.error("请求体为空")
                 return {
                     'success': False,
                     'error_code': 'INVALID_REQUEST',
@@ -165,7 +181,9 @@ class FlowDetail(Resource):
             update_schema = FlowTemplateUpdateSchema(context={'flow_template_id': flow_id})
             try:
                 data = update_schema.load(json_data, partial=True)
+                current_app.logger.info(f"Schema验证后数据: {json.dumps(data, ensure_ascii=False, indent=2)}")
             except Exception as e:
+                current_app.logger.error(f"数据验证失败: {str(e)}")
                 return {
                     'success': False,
                     'error_code': 'VALIDATION_ERROR',
@@ -174,11 +192,15 @@ class FlowDetail(Resource):
                 }, 400
 
             # 调用服务层更新模板
-            template = FlowTemplateService.update_template(flow_id, json_data)
+            current_app.logger.info(f"调用服务层更新模板: FlowTemplateService.update_template()")
+            template = FlowTemplateService.update_template(flow_id, data)  # 使用验证后的数据
 
             # 返回更新后的模板信息
             flow_schema = FlowTemplateSchema()
             result = flow_schema.dump(template)
+            current_app.logger.info(f"服务层返回结果: {json.dumps(result, ensure_ascii=False, indent=2)}")
+
+            current_app.logger.info("=== 更新流程模板完成 ===")
             return {
                 'success': True,
                 'data': result,

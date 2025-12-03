@@ -32,10 +32,10 @@ class FlowTemplateService:
     @staticmethod
     def create_template(template_data: Dict[str, Any], user_id: Optional[int] = None) -> FlowTemplate:
         """
-        创建新的流程模板
+        创建新的流程模板，完全适配前端数据结构
 
         Args:
-            template_data: 模板数据，包含基本信息和步骤列表
+            template_data: 模板数据，包含基本信息和步骤列表（前端FlowTemplateRequest格式）
             user_id: 创建者ID（暂未实现用户系统）
 
         Returns:
@@ -45,19 +45,35 @@ class FlowTemplateService:
             DuplicateTemplateNameError: 模板名称已存在
             StepValidationError: 步骤验证失败
         """
+        from flask import current_app
+        import json
+
+        current_app.logger.info(f"create_template() - 开始处理模板: {template_data.get('name')}")
+
         # 检查模板名称是否已存在
-        if FlowTemplate.query.filter_by(name=template_data['name']).first():
+        existing_template = FlowTemplate.query.filter_by(name=template_data['name']).first()
+        if existing_template:
+            current_app.logger.error(f"模板名称已存在: {template_data['name']}")
             raise DuplicateTemplateNameError(f"模板名称 '{template_data['name']}' 已存在")
 
         try:
+            # 提取模板基本信息
+            template_info = {
+                'name': template_data['name'],
+                'type': template_data['type'],
+                'description': template_data.get('description', ''),
+                'version': template_data.get('version', '1.0.0'),
+                'is_active': template_data.get('is_active', True)
+            }
+
+            # 添加topic字段支持前端
+            if 'topic' in template_data:
+                template_info['topic'] = template_data['topic']
+
+            current_app.logger.info(f"模板基本信息: {json.dumps(template_info, ensure_ascii=False, indent=2)}")
+
             # 创建模板
-            template = FlowTemplate(
-                name=template_data['name'],
-                type=template_data['type'],
-                description=template_data.get('description', ''),
-                version=template_data.get('version', '1.0.0'),
-                is_active=template_data.get('is_active', True)
-            )
+            template = FlowTemplate(**template_info)
 
             # 设置结束条件配置
             if 'termination_config' in template_data:
@@ -66,15 +82,21 @@ class FlowTemplateService:
             db.session.add(template)
             db.session.flush()  # 获取模板ID
 
-            # 创建步骤
-            if 'steps' in template_data and template_data['steps']:
-                FlowTemplateService._create_template_steps(template.id, template_data['steps'])
+            current_app.logger.info(f"数据库插入成功 - 模板ID: {template.id}")
+
+            # 创建步骤（如果有）
+            steps_data = template_data.get('steps', [])
+            if steps_data:
+                current_app.logger.info(f"步骤数据: {json.dumps(steps_data, ensure_ascii=False, indent=2)}")
+                FlowTemplateService._create_template_steps(template.id, steps_data)
 
             db.session.commit()
+            current_app.logger.info("模板创建完成")
             return template
 
         except Exception as e:
             db.session.rollback()
+            current_app.logger.error(f"创建模板失败: {str(e)}")
             if isinstance(e, FlowTemplateError):
                 raise
             raise FlowTemplateError(f"创建模板失败: {str(e)}")
@@ -82,34 +104,67 @@ class FlowTemplateService:
     @staticmethod
     def _create_template_steps(template_id: int, steps_data: List[Dict[str, Any]]) -> None:
         """
-        创建模板步骤
+        创建模板步骤，完全适配前端数据结构
 
         Args:
             template_id: 模板ID
-            steps_data: 步骤数据列表
+            steps_data: 步骤数据列表（前端FlowStep格式）
 
         Raises:
             StepValidationError: 步骤验证失败
         """
+        from flask import current_app
+
+        current_app.logger.info(f"_create_template_steps() - 开始创建步骤，模板ID: {template_id}")
+
         # 验证步骤数据
         FlowTemplateService._validate_steps_data(steps_data)
 
         steps = []
-        for step_data in steps_data:
+        for index, step_data in enumerate(steps_data):
+            current_app.logger.info(f"处理步骤 {index + 1}: {step_data.get('speaker_role_ref')}")
+
+            # 处理context_scope字段：支持字符串或数组格式
+            context_scope = step_data.get('context_scope')
+            if isinstance(context_scope, (list, dict)):
+                # 如果是数组或对象，转换为JSON字符串存储
+                context_scope = json.dumps(context_scope, ensure_ascii=False)
+            else:
+                # 如果是字符串，直接使用
+                context_scope = str(context_scope) if context_scope is not None else ''
+
+            # 处理logic_config字段：适配前端logic_config，并确保为字典
+            logic_config = step_data.get('logic_config') or {}
+            if not isinstance(logic_config, dict):
+                # 如果是字符串或其他可解析为JSON的格式，尝试解析一次
+                try:
+                    if isinstance(logic_config, str):
+                        parsed = json.loads(logic_config)
+                        logic_config = parsed if isinstance(parsed, dict) else {}
+                    else:
+                        # 尝试从(key, value)序列构造，失败则忽略
+                        logic_config = dict(logic_config)  # type: ignore[arg-type]
+                except Exception:
+                    logic_config = {}
+
             step = FlowStep(
                 flow_template_id=template_id,
                 order=step_data['order'],
                 speaker_role_ref=step_data['speaker_role_ref'],
                 target_role_ref=step_data.get('target_role_ref'),
-                task_type=step_data['task_type'],
-                context_scope=step_data['context_scope'],
+                task_type=step_data['task_type'],  # 扩展支持前端所有类型
+                context_scope=context_scope,  # 存储处理后的格式
                 context_param_dict=step_data.get('context_param', {}),
+                logic_config_dict=logic_config,  # 使用统一的logic_config
+                # 保留旧字段以兼容现有数据
                 loop_config_dict=step_data.get('loop_config', {}),
                 condition_config_dict=step_data.get('condition_config', {}),
                 next_step_id=step_data.get('next_step_id'),
                 description=step_data.get('description', '')
             )
             steps.append(step)
+
+        current_app.logger.info(f"创建 {len(steps)} 个步骤对象")
 
         db.session.add_all(steps)
 
