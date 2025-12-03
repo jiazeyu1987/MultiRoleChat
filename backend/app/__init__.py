@@ -85,7 +85,7 @@ def register_api(app):
 
     # 导入并注册API资源
     from app.api.roles import RoleList, RoleDetail
-    from app.api.flows import FlowList, FlowDetail, FlowCopy, FlowStatistics
+    from app.api.flows import FlowList, FlowDetail, FlowCopy, FlowStatistics, FlowClearAll
     from app.api.sessions import SessionList, SessionDetail, SessionExecution, SessionControl, SessionBranch, SessionStatistics
     from app.api.messages import MessageList, MessageDetail, MessageExport, MessageReplies, MessageStatistics, MessageFlow, MessageSearch
     from app.api.monitoring import (SystemHealth, PerformanceMetrics, PerformanceHistory,
@@ -101,6 +101,7 @@ def register_api(app):
     api.add_resource(FlowDetail, '/api/flows/<int:flow_id>')
     api.add_resource(FlowCopy, '/api/flows/<int:flow_id>/copy')
     api.add_resource(FlowStatistics, '/api/flows/statistics')
+    api.add_resource(FlowClearAll, '/api/flows/clear-all')
 
     # 会话管理接口
     api.add_resource(SessionList, '/api/sessions')

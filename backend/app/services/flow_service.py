@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from sqlalchemy import or_, and_
+from flask import current_app
 from app import db
 from app.models import FlowTemplate, FlowStep, Role
 
@@ -496,3 +497,43 @@ class FlowTemplateService:
             'inactive_templates': total_templates - active_templates,
             'type_distribution': type_distribution
         }
+
+    @staticmethod
+    def clear_all_templates() -> Dict[str, int]:
+        """
+        删除所有流程模板和步骤
+
+        Returns:
+            Dict: 删除统计信息
+        """
+        # 获取当前数据统计
+        template_count = FlowTemplate.query.count()
+        step_count = FlowStep.query.count()
+
+        if template_count == 0:
+            return {
+                'deleted_templates': 0,
+                'deleted_steps': 0
+            }
+
+        try:
+            # 先删除所有步骤（由于外键约束，必须先删除子表）
+            deleted_steps = FlowStep.query.delete()
+
+            # 再删除所有模板
+            deleted_templates = FlowTemplate.query.delete()
+
+            # 提交更改
+            db.session.commit()
+
+            current_app.logger.info(f"已删除 {deleted_templates} 个模板和 {deleted_steps} 个步骤")
+
+            return {
+                'deleted_templates': deleted_templates,
+                'deleted_steps': deleted_steps
+            }
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"删除所有模板时发生错误: {str(e)}")
+            raise

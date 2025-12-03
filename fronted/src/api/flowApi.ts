@@ -146,4 +146,14 @@ export const flowApi = {
   }> {
     return apiClient.get<any>('/api/flows/statistics');
   },
+
+  /**
+   * 删除所有流程模板
+   */
+  async clearAllFlows(): Promise<{
+    deleted_templates: number;
+    deleted_steps: number;
+  }> {
+    return apiClient.delete<any>('/api/flows/clear-all');
+  },
 };

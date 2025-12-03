@@ -63,6 +63,28 @@ def create_builtin_roles():
     print("系统预置角色创建完成！")
 
 @app.cli.command()
+def clear_templates():
+    """清理所有流程模板和步骤"""
+    from app.models import FlowTemplate, FlowStep
+
+    # 查看当前数据
+    template_count = FlowTemplate.query.count()
+    step_count = FlowStep.query.count()
+
+    print(f"当前数据库中有 {template_count} 个模板和 {step_count} 个步骤")
+
+    # 删除所有步骤（先删除子表）
+    deleted_steps = FlowStep.query.delete()
+
+    # 删除所有模板
+    deleted_templates = FlowTemplate.query.delete()
+
+    # 提交更改
+    db.session.commit()
+
+    print(f"✅ 清理完成！删除了 {deleted_templates} 个模板和 {deleted_steps} 个步骤")
+
+@app.cli.command()
 def create_builtin_flows():
     """创建系统预置流程模板"""
     from app.models import FlowTemplate, FlowStep

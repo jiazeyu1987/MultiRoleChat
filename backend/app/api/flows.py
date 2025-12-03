@@ -147,6 +147,7 @@ class FlowDetail(Resource):
             # 序列化结果，包含步骤信息
             flow_schema = FlowTemplateSchema()
             result = flow_schema.dump(template)
+            current_app.logger.info("FlowDetail response data: %s", json.dumps(result, ensure_ascii=False))
 
             return {
                 'success': True,
@@ -346,4 +347,33 @@ class FlowStatistics(Resource):
                 'success': False,
                 'error_code': 'INTERNAL_ERROR',
                 'message': '获取流程模板统计失败'
+            }, 500
+
+
+class FlowClearAll(Resource):
+    """删除所有流程模板资源"""
+
+    def delete(self):
+        """删除所有流程模板和步骤"""
+        try:
+            # 调用服务层删除所有模板
+            result = FlowTemplateService.clear_all_templates()
+
+            current_app.logger.info(f"已删除 {result['deleted_templates']} 个模板和 {result['deleted_steps']} 个步骤")
+
+            return {
+                'success': True,
+                'message': f'成功删除 {result["deleted_templates"]} 个模板和 {result["deleted_steps"]} 个步骤',
+                'data': {
+                    'deleted_templates': result['deleted_templates'],
+                    'deleted_steps': result['deleted_steps']
+                }
+            }
+
+        except Exception as e:
+            current_app.logger.error(f"删除所有流程模板失败: {str(e)}")
+            return {
+                'success': False,
+                'error_code': 'INTERNAL_ERROR',
+                'message': '删除所有流程模板失败'
             }, 500

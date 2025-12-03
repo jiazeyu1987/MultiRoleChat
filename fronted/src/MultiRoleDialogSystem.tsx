@@ -32,8 +32,8 @@ import LLMTestPage from './LLMTestPage';
 
 // --- API和类型导入 ---
 import { roleApi } from './api/roleApi';
-import { flowApi } from './api/flowApi';
-import { Role as ApiRole, RoleRequest } from './types/role';
+import { flowApi, FlowTemplate, FlowStep } from './api/flowApi';
+import { Role, RoleRequest } from './types/role';
 
 // --- 主题配置系统 ---
 
@@ -128,9 +128,6 @@ const ThemeContext = createContext<{
 const useTheme = () => useContext(ThemeContext);
 
 // --- 类型定义 ---
-
-// 使用导入的ApiRole类型，避免重复定义
-type Role = ApiRole;
 
 // Multi-select dropdown component
 const MultiSelectContextDropdown: React.FC<{
@@ -295,30 +292,6 @@ const MultiSelectContextDropdown: React.FC<{
     </div>
   );
 };
-
-interface FlowStep {
-  id: number;
-  order: number;
-  speaker_role_ref: string;
-  target_role_ref?: string;
-  task_type: 'ask_question' | 'answer_question' | 'comment' | string;
-  context_scope: 'all' | 'last_n_messages' | string | string[]; // 可以是角色名称或角色名称数组
-  context_param?: { n: number }; // 保持原有的n参数支持
-  logic_config?: {
-    next_step_order?: number;
-    exit_condition?: string;
-    max_loops?: number;
-  };
-}
-
-interface FlowTemplate {
-  id: number;
-  name: string;
-  topic?: string;
-  is_active: boolean;
-  steps: FlowStep[];
-  created_at: string;
-}
 
 interface SessionParticipant {
   session_role_id: number;
@@ -656,19 +629,54 @@ const FlowManagement = () => {
     try {
       // 从后端获取完整模板详情（包含步骤等配置）
       const fullFlow = await flowApi.getFlow(flow.id);
-      setEditingFlow(fullFlow);
-    } catch (error: any) {
+      setEditingFlow(fullFlow as Partial<FlowTemplate>);
+    } catch (error) {
       console.error('获取流程模板详情失败:', error);
-      alert(error.message || '获取模板详情失败');
+      alert((error as Error).message || '获取模板详情失败');
     }
   }
 
   const fetchFlows = async () => {
     try {
       const result = await flowApi.getFlows();
-      setFlows(result.items);
+      setFlows(result.items as FlowTemplate[]);
     } catch (error) {
       console.error('获取流程模板失败:', error);
+    }
+  };
+
+  const handleClearAll = async () => {
+    // 显示确认对话框
+    const confirmed = window.confirm(
+      `确定要删除所有 ${flows.length} 个流程模板吗？\n\n此操作不可恢复，将删除所有模板和相关的步骤数据。`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    // 二次确认
+    const finalConfirmation = window.confirm(
+      '请再次确认：真的要删除所有流程模板吗？\n\n输入"确定"继续，输入"取消"停止操作。'
+    );
+
+    if (!finalConfirmation) {
+      return;
+    }
+
+    try {
+      // 调用API删除所有模板
+      const result = await flowApi.clearAllFlows();
+
+      // 显示成功消息
+      alert(`删除成功！\n已删除 ${result.deleted_templates} 个模板和 ${result.deleted_steps} 个步骤。`);
+
+      // 重新加载模板列表
+      await fetchFlows();
+
+    } catch (error) {
+      console.error('删除所有模板失败:', error);
+      alert(`删除失败: ${(error as Error).message || '删除所有模板时发生错误'}`);
     }
   };
 
@@ -770,7 +778,7 @@ const FlowManagement = () => {
         setEditingFlow(null);
       } catch (error) {
         console.error("保存模板失败:", error);
-        alert(`保存模板失败: ${error.message || '未知错误'}`);
+        alert(`保存模板失败: ${(error as Error).message || '未知错误'}`);
       }
     }} onCancel={() => setEditingFlow(null)} />;
   }
@@ -782,7 +790,17 @@ const FlowManagement = () => {
           <h1 className="text-2xl font-bold text-gray-900">流程模板</h1>
           <p className="text-gray-500 text-sm mt-1">设计对话的SOP（标准作业程序）</p>
         </div>
-        <Button onClick={handleCreate} icon={Plus}>新建模板</Button>
+        <div className="flex gap-3">
+          <Button
+            onClick={handleClearAll}
+            variant="danger"
+            icon={Trash2}
+            disabled={flows.length === 0}
+          >
+            删除所有
+          </Button>
+          <Button onClick={handleCreate} icon={Plus}>新建模板</Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -830,11 +848,18 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
     roleApi.getRoles().then(res => setRoles(res.items));
   }, []);
 
+  // 当外部传入的 flow 发生变化（例如从后端重新加载模板详情时），同步更新本地表单和步骤状态
+  useEffect(() => {
+    setData(flow);
+    setSteps(flow.steps || []);
+  }, [flow]);
+
   const addStep = () => {
     const newStep: FlowStep = {
       id: Date.now(),
+      flow_template_id: data.id || 0, // 临时ID，保存时由后端分配
       order: steps.length + 1,
-      speaker_role_ref: roles[0]?.name || '', 
+      speaker_role_ref: roles[0]?.name || '',
       task_type: 'ask_question',
       context_scope: 'all'
     };
@@ -1128,7 +1153,7 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
     if (formData.flow_template_id) {
       const flow = flows.find(f => f.id === Number(formData.flow_template_id));
       if (flow) {
-        const refs = Array.from(new Set(flow.steps.map(s => s.speaker_role_ref).filter(Boolean)));
+        const refs = Array.from(new Set((flow.steps || []).map(s => s.speaker_role_ref).filter(Boolean)));
         setRequiredRoles(refs);
         if (flow.topic) setFormData(prev => ({ ...prev, topic: flow.topic || '' }));
         setFormData(prev => ({
@@ -1177,7 +1202,7 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
           <label className="block text-sm font-medium text-gray-700 mb-1">选择流程模板</label>
           <select className={`w-full border rounded-lg px-3 py-2 ${theme.ring}`} value={formData.flow_template_id} onChange={e => setFormData({...formData, flow_template_id: e.target.value})}>
             <option value="">请选择...</option>
-            {flows.map(f => <option key={f.id} value={f.id}>{f.name} ({f.steps.length}步)</option>)}
+            {flows.map(f => <option key={f.id} value={f.id}>{f.name} ({(f.steps || []).length}步)</option>)}
           </select>
         </div>
 
