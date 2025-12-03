@@ -653,8 +653,14 @@ const FlowManagement = () => {
   };
 
   const handleEdit = async (flow: FlowTemplate) => {
-    // TODO: Replace with real API when available
-    setEditingFlow(flow); // Use the flow directly for now
+    try {
+      // 从后端获取完整模板详情（包含步骤等配置）
+      const fullFlow = await flowApi.getFlow(flow.id);
+      setEditingFlow(fullFlow);
+    } catch (error: any) {
+      console.error('获取流程模板详情失败:', error);
+      alert(error.message || '获取模板详情失败');
+    }
   }
 
   const fetchFlows = async () => {
