@@ -193,9 +193,16 @@ class FlowTemplateService:
 
         # 验证每个步骤的必要字段
         required_fields = ['order', 'speaker_role_ref', 'task_type', 'context_scope']
-        valid_task_types = ['ask_question', 'answer_question', 'review_answer', 'question',
-                           'summarize', 'evaluate', 'suggest', 'challenge', 'support', 'conclude']
-        valid_context_scopes = ['none', 'last_message', 'last_round', 'last_n_messages', 'all']
+        valid_task_types = [
+            'ask_question', 'answer_question', 'review_answer', 'question',
+            'summarize', 'evaluate', 'suggest', 'challenge', 'support', 'conclude',
+            # 兼容前端使用的 comment 类型（作为泛化“点评/评论”任务）
+            'comment',
+        ]
+        # 引擎直接识别的基础上下文范围
+        base_context_scopes = ['none', 'last_message', 'last_round', 'last_n_messages', 'all']
+        # 系统级特殊上下文（例如只使用预设议题）
+        system_context_scopes = ['__TOPIC__']
 
         for step in steps_data:
             # 检查必要字段
@@ -208,12 +215,45 @@ class FlowTemplateService:
                 raise StepValidationError(f"无效的任务类型: {step['task_type']}")
 
             # 验证上下文范围
-            if step['context_scope'] not in valid_context_scopes:
-                raise StepValidationError(f"无效的上下文范围: {step['context_scope']}")
+            scope = step['context_scope']
 
-            # 验证上下文参数
-            if step['context_scope'] == 'last_n_messages' and 'context_param' not in step:
-                raise StepValidationError("使用'last_n_messages'时必须提供context_param参数")
+            # 1) 基础枚举范围或系统特殊值，直接通过
+            if scope in base_context_scopes or scope in system_context_scopes:
+                pass
+            else:
+                # 2) 允许角色筛选上下文：
+                #    - context_scope 为 JSON 字符串的角色名数组: '["RoleA","RoleB"]'
+                #    - 或普通的非空字符串（单个角色名），具体角色是否存在由执行引擎在运行时判断
+                is_valid_scope = False
+
+                if isinstance(scope, str):
+                    # 尝试解析为 JSON 数组（多角色）
+                    try:
+                        parsed = json.loads(scope)
+                    except Exception:
+                        parsed = None
+
+                    if isinstance(parsed, list) and parsed:
+                        # 要求数组元素都是非空字符串
+                        if all(isinstance(name, str) and name.strip() for name in parsed):
+                            is_valid_scope = True
+                    else:
+                        # 非 JSON 字符串时，只要是非空字符串即可视为单角色名
+                        if scope.strip():
+                            is_valid_scope = True
+                elif isinstance(scope, list) and scope:
+                    # 兼容直接传入数组的情况
+                    if all(isinstance(name, str) and name.strip() for name in scope):
+                        is_valid_scope = True
+
+                if not is_valid_scope:
+                    raise StepValidationError(f"无效的上下文范围: {scope}")
+
+            # 验证上下文参数：last_n_messages 必须提供 context_param.n
+            if scope == 'last_n_messages':
+                ctx_param = step.get('context_param')
+                if not isinstance(ctx_param, dict) or 'n' not in ctx_param:
+                    raise StepValidationError("使用'last_n_messages'时必须提供context_param参数")
 
     @staticmethod
     def get_template_by_id(template_id: int, include_steps: bool = True) -> Optional[FlowTemplate]:
