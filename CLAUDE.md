@@ -74,7 +74,7 @@ python run.py init-db
 python run.py create-builtin-roles
 python run.py create-builtin-flows
 
-# Run development server
+# Run development server (default port 5000)
 python run.py
 
 # Production deployment
@@ -88,7 +88,7 @@ cd fronted  # Note: directory name is "fronted", not "frontend"
 # Install dependencies
 npm install
 
-# Run development server
+# Run development server (port 3000, proxies /api to backend:5000)
 npm run dev
 
 # Build for production
@@ -101,20 +101,52 @@ npm run preview
 npm run lint
 ```
 
-### Environment Configuration
-Key environment variables (see `backend/.env.example`):
-- `FLASK_ENV` - Environment (development/production)
-- `DATABASE_URL` - Database connection string
-- `OPENAI_API_KEY` - OpenAI API key for LLM integration
-- `LLM_DEFAULT_PROVIDER` - Default LLM provider
-- `LOG_LEVEL` - Logging level
-- `DEFAULT_PAGE_SIZE` - Pagination settings
+### Quick Development Workflow
+```bash
+# Terminal 1: Start backend
+cd backend && python run.py
 
-### Testing
+# Terminal 2: Start frontend (auto-reloads)
+cd fronted && npm run dev
+
+# Access application at http://localhost:3000
+# API available at http://localhost:3000/api/* (proxied)
+# Health check: http://localhost:3000/api/health
+```
+
+### Database Management Commands
+```bash
+cd backend
+
+# Check database status
+python check_db.py
+
+# Clean database (use with caution)
+python clean_db.py
+
+# Apply migrations
+python apply_migration.py
+
+# Reset templates to built-in only
+python reset_templates.py
+```
+
+### Environment Configuration
+Key environment variables (copy from `backend/.env.example`):
+- `FLASK_ENV` - Environment (development/production)
+- `DATABASE_URL` - Database connection string (default: sqlite:///app.db)
+- `OPENAI_API_KEY` - OpenAI API key for LLM integration
+- `LLM_DEFAULT_PROVIDER` - Default LLM provider (openai)
+- `OPENAI_MODEL` - OpenAI model to use (default: gpt-3.5-turbo)
+- `LOG_LEVEL` - Logging level (default: INFO)
+- `DEFAULT_PAGE_SIZE` - Pagination settings (default: 20)
+
+### Testing and Validation
 No automated test suite is currently configured. Manual testing can be done via:
-- Frontend: LLMTestPage component at `/llm-test` route
-- Backend: Health check endpoint at `/api/health`
-- API testing: Use the built-in flow templates and roles for integration testing
+- **Frontend**: LLMTestPage component at `/llm-test` route for API testing
+- **Backend**: Health check endpoint at `/api/health` for system status
+- **Integration**: Use built-in flow templates and roles for end-to-end testing
+- **Database**: Use `python check_db.py` to verify database integrity
 
 ## Key Technical Features
 
@@ -126,11 +158,11 @@ No automated test suite is currently configured. Manual testing can be done via:
 - Termination condition configuration
 
 ### 2. LLM Integration
-- **Simplified Anthropic Claude integration** with automatic API key detection
-- OpenAI API integration as alternative provider
-- Comprehensive request logging and monitoring
+- **OpenAI API integration** as primary provider (configured via environment variables)
+- Support for multiple LLM providers via service abstraction layer
+- Comprehensive request logging and monitoring through `services/llm/`
 - Async processing with timeout and retry handling
-- Context-aware conversation management
+- Context-aware conversation management with message threading
 
 ### 3. Monitoring & Health
 - Real-time system health checks (`/api/health`)
@@ -171,22 +203,25 @@ When working with this project:
 
 ### Data Flow
 1. Frontend sends REST API requests (React components at `fronted/src/MultiRoleDialogSystem.tsx`)
-2. API layer validates and forwards to services (`backend/app/api/`)
-3. Services orchestrate business logic and LLM calls (`backend/app/services/`)
-4. Data persisted through SQLAlchemy models (`backend/app/models/`)
-5. Real-time status updates via polling (health checks at `/api/health`)
+2. Vite dev server proxies `/api/*` requests to Flask backend on port 5000
+3. API layer validates and forwards to services (`backend/app/api/`)
+4. Services orchestrate business logic and LLM calls (`backend/app/services/`)
+5. Data persisted through SQLAlchemy models (`backend/app/models/`)
+6. Real-time status updates via polling (health checks at `/api/health`)
 
 ### Key Technical Decisions
 
-- **LLM Provider**: Multi-provider support (Anthropic Claude, OpenAI) with simplified integration
-- **Database**: SQLAlchemy ORM with JSON fields for flexible configuration
-- **Frontend**: React + TypeScript with Vite for fast development
-- **API Design**: Flask-RESTful with consistent error handling
-- **Monitoring**: Built-in health checks and performance metrics
+- **LLM Provider**: OpenAI API integration with provider abstraction for extensibility
+- **Database**: SQLAlchemy ORM with JSON fields for flexible flow configurations
+- **Frontend**: React + TypeScript with Vite for fast development and hot reloading
+- **API Design**: Flask-RESTful with consistent error handling and CORS support
+- **Development**: Proxy configuration routes frontend API calls to backend during development
+- **Monitoring**: Built-in health checks and performance metrics with detailed logging
 
-## Original Documentation
+## Additional Documentation
 
-The `doc/` directory contains the original specification documents:
-- Business requirements, technical architecture, and API specifications
+The `doc/` and `doc_glm/` directories contain specification and implementation documents:
+- Original business requirements and technical architecture specifications
+- Data structure consistency and frontend compatibility validation reports
 - These documents were used for initial planning but have been superseded by the implemented system
-- Refer to these for understanding the original design intent
+- Refer to these for understanding the original design intent and recent improvements

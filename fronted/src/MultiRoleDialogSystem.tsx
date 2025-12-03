@@ -24,7 +24,8 @@ import {
   RotateCcw,
   Globe,
   Key,
-  Bot
+  Bot,
+  FileCheck
 } from 'lucide-react';
 
 // --- LLM测试页面组件 ---
@@ -929,11 +930,43 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
           <div className="space-y-3">
             {steps.map((step, index) => {
               const isLogicExpanded = expandedLogicStep === index;
+              const hasLoopLogic = step.logic_config?.exit_condition || step.logic_config?.max_loops;
+              const hasNextStep = step.logic_config?.next_step_order;
+
               return (
               <div key={step.id} className="bg-white border border-gray-200 rounded-lg p-4 relative group hover:border-gray-300 transition-colors">
                 <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-500 shrink-0 mt-1">
-                    {index + 1}
+                  <div className="relative shrink-0 mt-1">
+                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-500">
+                      {index + 1}
+                    </div>
+                    {/* 循环逻辑指示器 */}
+                    <div className="absolute -top-1 -right-1 flex gap-0.5">
+                      {hasNextStep && (
+                        <div
+                          className="w-3 h-3 bg-blue-500 rounded-full border border-white cursor-help"
+                          title={`跳转逻辑: 执行完后跳转到 Step ${step.logic_config?.next_step_order}`}
+                        >
+                          <span className="sr-only">跳转逻辑</span>
+                        </div>
+                      )}
+                      {step.logic_config?.max_loops && (
+                        <div
+                          className="w-3 h-3 bg-orange-500 rounded-full border border-white cursor-help"
+                          title={`循环限制: 最大重复 ${step.logic_config.max_loops} 次${step.logic_config.exit_condition ? ' 或满足结束条件' : ''}`}
+                        >
+                          <span className="sr-only">最大循环次数</span>
+                        </div>
+                      )}
+                      {step.logic_config?.exit_condition && (
+                        <div
+                          className="w-3 h-3 bg-green-500 rounded-full border border-white cursor-help"
+                          title={`结束条件: "${step.logic_config.exit_condition}"${step.logic_config.max_loops ? ` (最多${step.logic_config.max_loops}次循环)` : ''}`}
+                        >
+                          <span className="sr-only">循环结束条件</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex-1 space-y-3">
@@ -990,6 +1023,30 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
                         />
                       </div>
                     </div>
+
+                    {/* 紧凑的循环信息显示 */}
+                    {(hasNextStep || hasLoopLogic) && !isLogicExpanded && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {hasNextStep && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-md">
+                            <CornerDownLeft size={10} />
+                            跳转至 Step {step.logic_config?.next_step_order}
+                          </span>
+                        )}
+                        {step.logic_config?.max_loops && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-md">
+                            <RefreshCw size={10} />
+                            最大 {step.logic_config.max_loops} 次
+                          </span>
+                        )}
+                        {step.logic_config?.exit_condition && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded-md max-w-xs truncate" title={step.logic_config.exit_condition}>
+                            <FileCheck size={10} />
+                            结束条件: {step.logic_config.exit_condition}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2 text-xs">
                        <button 

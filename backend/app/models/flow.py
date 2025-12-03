@@ -154,6 +154,16 @@ class FlowStep(db.Model):
         else:
             self._logic_config = str(value)
 
+    @property
+    def loop_config_dict(self) -> dict:
+        """获取循环配置字典 - logic_config的别名，保持向后兼容"""
+        return self.logic_config
+
+    @loop_config_dict.setter
+    def loop_config_dict(self, value):
+        """设置循环配置 - logic_config的别名，保持向后兼容"""
+        self.logic_config = value
+
     def to_dict(self):
         """转换为字典 - 完全匹配前端接口"""
         result = {
