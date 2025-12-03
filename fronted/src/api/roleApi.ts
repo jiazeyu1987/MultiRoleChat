@@ -8,8 +8,12 @@ import {
   ApiError
 } from '../types/role';
 
-// API基础URL配置 - 开发环境默认后端端口为5000
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+// API基础URL配置 - 使用不常用端口（默认 5010）
+// 优先读取新的环境变量 VITE_API_BASE_URL_ALT，兼容旧的 VITE_API_BASE_URL
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL_ALT ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:5010';
 
 // HTTP请求辅助函数
 class ApiClient {

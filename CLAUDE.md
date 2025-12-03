@@ -110,6 +110,12 @@ Key environment variables (see `.env.example`):
 - `LOG_LEVEL` - Logging level
 - `API_HOST` / `API_PORT` - Server binding configuration
 
+### Testing
+No automated test suite is currently configured. Manual testing can be done via:
+- Frontend: LLMTestPage component at `/llm-test` route
+- Backend: Health check endpoint at `/api/health`
+- API testing: Use the built-in flow templates and roles for integration testing
+
 ## Key Technical Features
 
 ### 1. Advanced Flow Engine
@@ -151,6 +157,7 @@ When working with this project:
 5. **Monitoring**: The system includes comprehensive health monitoring and LLM request logging. Check `/api/health` for system status and `logs/` directories for detailed logs.
 
 6. **Frontend Note**: The frontend directory is named `fronted` (not `frontend`) - this is intentional and should be preserved.
+7. **Database Warnings**: The application shows SQLAlchemy relationship warnings on startup. These are non-critical but should be addressed in production by adding proper `overlaps` parameters to relationship definitions.
 
 ## Architecture Patterns
 
@@ -160,11 +167,11 @@ When working with this project:
 - **Monitoring Services**: Health checks and performance tracking
 
 ### Data Flow
-1. Frontend sends REST API requests
-2. API layer validates and forwards to services
-3. Services orchestrate business logic and LLM calls
-4. Data persisted through SQLAlchemy models
-5. Real-time status updates via polling
+1. Frontend sends REST API requests (React components at `fronted/src/MultiRoleDialogSystem.tsx`)
+2. API layer validates and forwards to services (`backend/app/api/`)
+3. Services orchestrate business logic and LLM calls (`backend/app/services/`)
+4. Data persisted through SQLAlchemy models (`backend/app/models/`)
+5. Real-time status updates via polling (health checks at `/api/health`)
 
 ### Key Technical Decisions
 
