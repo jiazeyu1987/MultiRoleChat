@@ -9,7 +9,8 @@
       "Bash(findstr:*)",
       "Bash(claude:*)",
       "Bash(dir:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, createContext, useRef } from 'react';
+import { useState, useEffect, useContext, createContext, useRef, useMemo } from 'react';
 import {
   Users,
   GitBranch,
@@ -11,6 +11,7 @@ import {
   Save,
   X,
   ChevronRight,
+  ChevronDown,
   Download,
   CheckCircle,
   ArrowRight,
@@ -130,14 +131,178 @@ const useTheme = () => useContext(ThemeContext);
 // 使用导入的ApiRole类型，避免重复定义
 type Role = ApiRole;
 
+// Multi-select dropdown component
+const MultiSelectContextDropdown: React.FC<{
+  value: string | string[];
+  onChange: (value: string | string[]) => void;
+  roles: Role[];
+  className?: string;
+}> = ({ value, onChange, roles, className = "" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Convert value to array for handling (support both strings and JSON arrays)
+  const selectedValues = useMemo(() => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (!value) {
+      return [];
+    }
+
+    // Try to parse as JSON array (for multi-role selections)
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [value];
+    } catch {
+      // If not valid JSON, treat as single string value
+      return [value];
+    }
+  }, [value]);
+
+  // Options available
+  const systemOptions = [
+    { value: 'all', label: '全部历史', type: 'system' },
+    { value: '__TOPIC__', label: '预设议题', type: 'system' }
+  ];
+
+  const roleOptions = roles.map(role => ({
+    value: role.name,
+    label: role.name,
+    type: 'role'
+  }));
+
+  const allOptions = [...systemOptions, ...roleOptions];
+
+  const handleToggle = (optionValue: string) => {
+    let newSelectedValues: string[];
+
+    if (optionValue === 'all' || optionValue === '__TOPIC__') {
+      // System options are single-select
+      newSelectedValues = [optionValue];
+    } else {
+      // Role options are multi-select
+      if (selectedValues.includes(optionValue)) {
+        newSelectedValues = selectedValues.filter(v => v !== optionValue);
+      } else {
+        // Remove system options when selecting roles
+        newSelectedValues = selectedValues.filter(v => !['all', '__TOPIC__'].includes(v));
+        newSelectedValues.push(optionValue);
+      }
+    }
+
+    // Convert to appropriate format for backend
+    let result: string | string[];
+    if (newSelectedValues.length === 0) {
+      result = '';
+    } else if (newSelectedValues.length === 1 && ['all', '__TOPIC__'].includes(newSelectedValues[0])) {
+      // System options remain as single strings
+      result = newSelectedValues[0];
+    } else {
+      // Multiple roles get serialized as JSON array for backend
+      result = JSON.stringify(newSelectedValues);
+    }
+
+    onChange(result);
+  };
+
+  const handleRemove = (optionValue: string) => {
+    handleToggle(optionValue);
+  };
+
+  const getDisplayText = () => {
+    if (selectedValues.length === 0) return '选择上下文策略';
+
+    if (selectedValues.length === 1) {
+      const option = allOptions.find(o => o.value === selectedValues[0]);
+      return option ? option.label : selectedValues[0];
+    }
+
+    return `已选择 ${selectedValues.length} 项`;
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <div
+        className={`w-full border rounded px-2 py-1 text-sm cursor-pointer min-h-[32px] flex items-center justify-between ${className}`}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span className="truncate">{getDisplayText()}</span>
+        <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border rounded shadow-lg max-h-60 overflow-auto">
+          {allOptions.map((option) => (
+            <div
+              key={option.value}
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+              onClick={() => handleToggle(option.value)}
+            >
+              <input
+                type="checkbox"
+                checked={selectedValues.includes(option.value)}
+                onChange={() => {}}
+                className="mr-2"
+              />
+              <span className="text-sm">{option.label}</span>
+              {option.type === 'role' && (
+                <span className="ml-2 text-xs text-gray-400">(角色)</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Selected items display */}
+      {selectedValues.length > 1 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {selectedValues.map((selectedValue) => {
+            const option = allOptions.find(o => o.value === selectedValue);
+            return (
+              <span
+                key={selectedValue}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
+              >
+                {option ? option.label : selectedValue}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemove(selectedValue);
+                  }}
+                  className="hover:text-blue-600"
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface FlowStep {
   id: number;
   order: number;
   speaker_role_ref: string;
   target_role_ref?: string;
   task_type: 'ask_question' | 'answer_question' | 'comment' | string;
-  context_scope: 'all' | 'last_n_messages';
-  context_param?: { n: number };
+  context_scope: 'all' | 'last_n_messages' | string | string[]; // 可以是角色名称或角色名称数组
+  context_param?: { n: number }; // 保持原有的n参数支持
   logic_config?: {
     next_step_order?: number;
     exit_condition?: string;
@@ -187,192 +352,7 @@ interface Message {
   created_at: string;
 }
 
-// --- Mock Backend ---
-
-const MOCK_DELAY = 600;
-
-const initialRoles: Role[] = [
-  { id: 1, name: "王老师", prompt: "你是一名资深高中物理老师，教学风格循循善诱。", created_at: new Date().toISOString() },
-  { id: 2, name: "李同学", prompt: "你是一名好奇心强的高中生，喜欢提问。", created_at: new Date().toISOString() },
-  { id: 3, name: "张教授", prompt: "你是一名严谨的大学物理教授。", created_at: new Date().toISOString() },
-];
-
-const initialFlows: FlowTemplate[] = [
-  {
-    id: 1,
-    name: "循环教学演示",
-    topic: "动量守恒定律在宏观与微观下的适用性。请详细讨论其在不同参照系下的表现，以及在相对论效应显著时的修正公式。",
-    is_active: true,
-    created_at: new Date().toISOString(),
-    steps: [
-      { id: 101, order: 1, speaker_role_ref: "王老师", task_type: "ask_question", context_scope: "all", logic_config: { next_step_order: 2 } },
-      { id: 102, order: 2, speaker_role_ref: "李同学", target_role_ref: "王老师", task_type: "answer_question", context_scope: "last_n_messages", context_param: { n: 1 } },
-      { id: 103, order: 3, speaker_role_ref: "王老师", target_role_ref: "李同学", task_type: "comment", context_scope: "all", logic_config: { next_step_order: 1, exit_condition: "学生回答正确", max_loops: 3 } }
-    ]
-  }
-];
-
-const db = {
-  roles: [...initialRoles],
-  flows: [...initialFlows],
-  sessions: [] as Session[],
-  messages: [] as Message[],
-};
-
-const api = {
-  getRoles: async (params: any = {}) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    let res = [...db.roles];
-    if (params.keyword) res = res.filter(r => r.name.includes(params.keyword));
-    return { items: res, total: res.length };
-  },
-  saveRole: async (role: Partial<Role>) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    const isDuplicate = db.roles.some(r => r.name === role.name && r.id !== role.id);
-    if (isDuplicate) throw new Error(`角色名称 "${role.name}" 已存在。`);
-    if (role.id) {
-      const idx = db.roles.findIndex(r => r.id === role.id);
-      db.roles[idx] = { ...db.roles[idx], ...role } as Role;
-    } else {
-      db.roles.push({ ...role, id: Date.now(), created_at: new Date().toISOString() } as Role);
-    }
-    return true;
-  },
-  deleteRole: async (id: number) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    db.roles = db.roles.filter(r => r.id !== id);
-    return true;
-  },
-  getFlows: async () => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    return { items: db.flows };
-  },
-  getFlowDetail: async (id: number) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    return db.flows.find(f => f.id === id);
-  },
-  saveFlow: async (flow: Partial<FlowTemplate>) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    if (flow.id) {
-      const idx = db.flows.findIndex(f => f.id === flow.id);
-      db.flows[idx] = { ...db.flows[idx], ...flow } as FlowTemplate;
-    } else {
-      db.flows.push({ ...flow, id: Date.now(), created_at: new Date().toISOString() } as FlowTemplate);
-    }
-    return true;
-  },
-  deleteFlow: async (id: number) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    db.flows = db.flows.filter(f => f.id !== id);
-    return true;
-  },
-  getSessions: async (params: any = {}) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    let res = [...db.sessions].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    if (params.status) res = res.filter(s => s.status === params.status);
-    return { items: res, total: res.length };
-  },
-  createSession: async (data: any) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    const template = db.flows.find(f => f.id === Number(data.flow_template_id));
-    const participants = data.role_mappings.map((m: any, idx: number) => {
-      const role = db.roles.find(r => r.id === Number(m.role_id));
-      return {
-        session_role_id: 1000 + idx,
-        role_ref: m.role_ref,
-        role_id: m.role_id,
-        role_name: role?.name || 'Unknown'
-      };
-    });
-    const newSession: Session = {
-      id: Date.now(),
-      topic: data.topic,
-      flow_template_id: Number(data.flow_template_id),
-      flow_template_name: template?.name,
-      status: 'not_started',
-      current_step_index: 0,
-      loop_counters: {},
-      participants,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    db.sessions.push(newSession);
-    return newSession;
-  },
-  getSessionDetail: async (id: number) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    return db.sessions.find(s => s.id === id);
-  },
-  getSessionMessages: async (id: number) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    return { items: db.messages.filter(m => m.session_id === id) };
-  },
-  runNextStep: async (sessionId: number) => {
-    await new Promise(r => setTimeout(r, 1000));
-    const session = db.sessions.find(s => s.id === sessionId);
-    if (!session) throw new Error("Session not found");
-    const template = db.flows.find(f => f.id === session.flow_template_id);
-    if (!template) throw new Error("Template not found");
-
-    if (session.current_step_index >= template.steps.length) {
-      session.status = 'finished';
-      return { session, is_finished: true, message: null };
-    }
-
-    const currentStep = template.steps[session.current_step_index];
-    session.loop_counters[session.current_step_index] = (session.loop_counters[session.current_step_index] || 0) + 1;
-
-    const speaker = session.participants.find(p => p.role_ref === currentStep.speaker_role_ref);
-    const target = session.participants.find(p => p.role_ref === currentStep.target_role_ref);
-    let targetRoleName = target?.role_name;
-    if (currentStep.target_role_ref === '__TOPIC__') targetRoleName = '预设议题';
-
-    let mockContent = "";
-    if (session.current_step_index === 0 && template.topic) {
-      mockContent = `[开场] ${speaker?.role_name} 针对议题 "${template.topic.substring(0, 30)}..." 发言：\n各位好，今天我们来讨论这个话题。我认为...`;
-    } else {
-      const targetStr = targetRoleName ? ` 对 ${targetRoleName}` : '';
-      mockContent = `[模拟生成] ${speaker?.role_name}${targetStr} 说: ... (基于 Step ${currentStep.order} - ${currentStep.task_type})`;
-    }
-
-    const newMessage: Message = {
-      id: Date.now(),
-      session_id: session.id,
-      speaker_session_role_id: speaker?.session_role_id || 0,
-      speaker_role_name: speaker?.role_name || 'System',
-      target_session_role_id: target?.session_role_id,
-      target_role_name: targetRoleName,
-      content: mockContent,
-      round_index: session.current_step_index + 1,
-      created_at: new Date().toISOString()
-    };
-    db.messages.push(newMessage);
-    session.status = 'running';
-
-    let nextIndex = session.current_step_index + 1;
-    if (currentStep.logic_config) {
-      const { next_step_order, max_loops } = currentStep.logic_config;
-      const currentLoopCount = session.loop_counters[session.current_step_index];
-      if (max_loops && currentLoopCount >= max_loops) {
-        nextIndex = session.current_step_index + 1;
-      } else if (next_step_order) {
-        const jumpToIndex = template.steps.findIndex(s => s.order === next_step_order);
-        if (jumpToIndex !== -1) nextIndex = jumpToIndex;
-      }
-    }
-    session.current_step_index = nextIndex;
-    if (session.current_step_index >= template.steps.length) {
-      session.status = 'finished';
-    }
-    return { session, message: newMessage, is_finished: session.status === 'finished' };
-  },
-  finishSession: async (id: number) => {
-    await new Promise(r => setTimeout(r, MOCK_DELAY));
-    const session = db.sessions.find(s => s.id === id);
-    if (session) session.status = 'finished';
-    return true;
-  }
-};
+// Mock API removed - now using real roleApi
 
 // --- UI Components ---
 
@@ -663,7 +643,8 @@ const FlowManagement = () => {
   const [editingFlow, setEditingFlow] = useState<Partial<FlowTemplate> | null>(null);
 
   useEffect(() => {
-    api.getFlows().then(res => setFlows(res.items));
+    // TODO: Replace with real API when available
+    setFlows([]); // Temporary empty flows
   }, [editingFlow]); 
 
   const handleCreate = () => {
@@ -671,13 +652,14 @@ const FlowManagement = () => {
   };
 
   const handleEdit = async (flow: FlowTemplate) => {
-    const detail = await api.getFlowDetail(flow.id);
-    setEditingFlow(detail || null);
+    // TODO: Replace with real API when available
+    setEditingFlow(flow); // Use the flow directly for now
   }
 
   if (editingFlow) {
     return <FlowEditor flow={editingFlow} onSave={async (flow: any) => {
-      await api.saveFlow(flow);
+      // TODO: Replace with real API when available
+      console.log("Flow saved:", flow);
       setEditingFlow(null);
     }} onCancel={() => setEditingFlow(null)} />;
   }
@@ -734,7 +716,7 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
   const [expandedLogicStep, setExpandedLogicStep] = useState<number | null>(null);
 
   useEffect(() => {
-    api.getRoles().then(res => setRoles(res.items));
+    roleApi.getRoles().then(res => setRoles(res.items));
   }, []);
 
   const addStep = () => {
@@ -754,6 +736,7 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
     setSteps(newSteps);
   };
 
+  
   const updateLogicConfig = (index: number, field: string, value: any) => {
     const newSteps = [...steps];
     const currentLogic = newSteps[index].logic_config || {};
@@ -856,14 +839,12 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
                       </div>
                       <div>
                         <label className="text-xs text-gray-500 block mb-1">上下文策略</label>
-                        <select 
-                          className={`w-full border rounded px-2 py-1 text-sm ${theme.ring}`}
+                        <MultiSelectContextDropdown
                           value={step.context_scope}
-                          onChange={e => updateStep(index, 'context_scope', e.target.value)}
-                        >
-                          <option value="all">全部历史</option>
-                          <option value="last_n_messages">最近 N 条</option>
-                        </select>
+                          onChange={(value) => updateStep(index, 'context_scope', value)}
+                          roles={roles}
+                          className={theme.ring}
+                        />
                       </div>
                     </div>
 
@@ -958,7 +939,8 @@ const SessionManagement = ({ onPlayback }: any) => {
 
   useEffect(() => {
     if (view === 'list') {
-      api.getSessions().then(res => setSessions(res.items));
+      // TODO: Replace with real API when available
+      setSessions([]); // Temporary empty sessions
     }
   }, [view]);
 
@@ -1025,8 +1007,10 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
   const [requiredRoles, setRequiredRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    api.getFlows().then(res => setFlows(res.items));
-    api.getRoles().then(res => setRoles(res.items));
+    // TODO: Replace with real API when available
+    // api.getFlows().then(res => setFlows(res.items));
+    setFlows([]); // Temporary empty flows
+    roleApi.getRoles().then(res => setRoles(res.items));
   }, []);
 
   useEffect(() => {
@@ -1059,7 +1043,8 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
       alert("请填写完整信息");
       return;
     }
-    const session = await api.createSession(formData);
+    // TODO: Replace with real API when available
+    const session = { id: Date.now() }; // Temporary mock session
     onSuccess(session.id);
   };
 
@@ -1126,10 +1111,10 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
-    const s = await api.getSessionDetail(sessionId);
-    setSession(s || null);
-    const m = await api.getSessionMessages(sessionId);
-    setMessages(m.items);
+    // TODO: Replace with real API when available
+    const s = { id: sessionId, topic: "Mock Session", status: 'not_started', current_step_index: 0, participants: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as any;
+    setSession(s);
+    setMessages([]); // Temporary empty messages
   };
 
   useEffect(() => { loadData(); }, [sessionId]);
@@ -1142,11 +1127,13 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
     if (!session) return;
     setGenerating(true);
     try {
-      const res = await api.runNextStep(session.id);
-      setSession(res.session);
-      if (res.message) {
-        setMessages(prev => [...prev, res.message]);
-      }
+      // TODO: Replace with real API when available
+      console.log("Next step executed");
+      // const res = await api.runNextStep(session.id);
+      // setSession(res.session);
+      // if (res.message) {
+      //   setMessages(prev => [...prev, res.message]);
+      // }
     } catch (e) {
       alert("执行失败");
     } finally {
@@ -1156,8 +1143,10 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
 
   const handleFinish = async () => {
     if (confirm("确定要结束当前会话吗？")) {
-      await api.finishSession(sessionId);
-      loadData();
+      // TODO: Replace with real API when available
+      console.log("Session finished");
+      // await api.finishSession(sessionId);
+      // loadData();
     }
   };
 
@@ -1295,7 +1284,8 @@ const HistoryPage = ({ onPlayback }: any) => {
   const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => {
-    api.getSessions({ status: 'finished' }).then(res => setSessions(res.items));
+    // TODO: Replace with real API when available
+    setSessions([]); // Temporary empty sessions
   }, []);
 
   return (
