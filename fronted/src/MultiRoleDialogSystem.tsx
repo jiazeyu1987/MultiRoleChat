@@ -958,7 +958,14 @@ const FlowEditor = ({ flow, onSave, onCancel }: any) => {
                         >
                           <option value="ask_question">提问</option>
                           <option value="answer_question">回答</option>
-                          <option value="comment">点评</option>
+                          <option value="review_answer">点评</option>
+                          <option value="question">质询</option>
+                          <option value="summarize">总结</option>
+                          <option value="evaluate">评估</option>
+                          <option value="suggest">建议</option>
+                          <option value="challenge">挑战</option>
+                          <option value="support">支持</option>
+                          <option value="conclude">结束</option>
                         </select>
                       </div>
                       <div>
