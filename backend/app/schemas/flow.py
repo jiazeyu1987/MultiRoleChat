@@ -12,9 +12,7 @@ class FlowStepSchema(Schema):
         'ask_question', 'answer_question', 'review_answer', 'question', 'summarize',
         'evaluate', 'suggest', 'challenge', 'support', 'conclude'
     ]))
-    context_scope = fields.String(required=True, validate=validate.OneOf([
-        'none', 'last_message', 'last_round', 'last_n_messages', 'all'
-    ]))
+    context_scope = fields.String(required=True)
     context_param = fields.Dict()  # 上下文参数，如 {"n": 5} for last_n_messages
     loop_config = fields.Dict()  # 循环配置
     condition_config = fields.Dict()  # 条件配置
