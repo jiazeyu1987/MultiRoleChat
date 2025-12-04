@@ -91,7 +91,7 @@ npm install
 # Run development server (port 3000, proxies /api to backend:5000)
 npm run dev
 
-# Build for production
+# Build for production (runs TypeScript compiler first)
 npm run build
 
 # Preview production build
@@ -100,6 +100,11 @@ npm run preview
 # Lint code
 npm run lint
 ```
+
+**Frontend-specific files:**
+- `vite.config.ts` - Vite configuration with API proxy to backend:5000
+- `tsconfig.json` - TypeScript strict mode configuration
+- `src/utils/errorHandler.ts` - Centralized API error handling utilities
 
 ### Quick Development Workflow
 ```bash
@@ -127,6 +132,9 @@ python clean_db.py
 # Apply migrations
 python apply_migration.py
 
+# Clear all flow templates and steps
+python clear_templates.py
+
 # Reset templates to built-in only
 python reset_templates.py
 ```
@@ -134,12 +142,20 @@ python reset_templates.py
 ### Environment Configuration
 Key environment variables (copy from `backend/.env.example`):
 - `FLASK_ENV` - Environment (development/production)
+- `SECRET_KEY` - Flask secret key for sessions
 - `DATABASE_URL` - Database connection string (default: sqlite:///app.db)
 - `OPENAI_API_KEY` - OpenAI API key for LLM integration
-- `LLM_DEFAULT_PROVIDER` - Default LLM provider (openai)
+- `OPENAI_BASE_URL` - OpenAI API base URL (optional)
 - `OPENAI_MODEL` - OpenAI model to use (default: gpt-3.5-turbo)
+- `OPENAI_MAX_TOKENS` - Max tokens for OpenAI responses (default: 1000)
+- `OPENAI_TEMPERATURE` - OpenAI temperature setting (default: 0.7)
+- `OPENAI_TIMEOUT` - OpenAI request timeout in seconds (default: 30)
+- `OPENAI_MAX_RETRIES` - OpenAI request retry attempts (default: 3)
+- `LLM_DEFAULT_PROVIDER` - Default LLM provider (openai)
 - `LOG_LEVEL` - Logging level (default: INFO)
+- `LOG_FILE` - Log file path (default: logs/app.log)
 - `DEFAULT_PAGE_SIZE` - Pagination settings (default: 20)
+- `MAX_PAGE_SIZE` - Maximum allowed page size (default: 100)
 
 ### Testing and Validation
 No automated test suite is currently configured. Manual testing can be done via:
@@ -147,6 +163,7 @@ No automated test suite is currently configured. Manual testing can be done via:
 - **Backend**: Health check endpoint at `/api/health` for system status
 - **Integration**: Use built-in flow templates and roles for end-to-end testing
 - **Database**: Use `python check_db.py` to verify database integrity
+- **LLM Integration**: Test files like `test_llm_integration.py` for OpenAI connectivity
 
 ## Key Technical Features
 
@@ -220,8 +237,10 @@ When working with this project:
 
 ## Additional Documentation
 
-The `doc/` and `doc_glm/` directories contain specification and implementation documents:
-- Original business requirements and technical architecture specifications
-- Data structure consistency and frontend compatibility validation reports
-- These documents were used for initial planning but have been superseded by the implemented system
-- Refer to these for understanding the original design intent and recent improvements
+- **`doc/`** and **`doc_glm/`** directories contain specification and implementation documents
+- **`会话剧场.md`** - Latest conversation theater functionality documentation
+- **`LLM调用方式对比分析.md`** - LLM integration comparison analysis
+- **`会话执行下一步功能实现总结.md`** - Next-step execution implementation summary
+- Various test HTML files (`debug_*.html`, `test_*.html`) for manual testing and debugging
+
+Note: These documents were used for planning and are superseded by the implemented system, but may be useful for understanding design intent and recent improvements.

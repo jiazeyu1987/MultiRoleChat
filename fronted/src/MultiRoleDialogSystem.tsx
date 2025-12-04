@@ -34,7 +34,9 @@ import LLMTestPage from './LLMTestPage';
 // --- API和类型导入 ---
 import { roleApi } from './api/roleApi';
 import { flowApi, FlowTemplate, FlowStep } from './api/flowApi';
+import { sessionApi, Session, Message } from './api/sessionApi';
 import { Role, RoleRequest } from './types/role';
+import { handleError } from './utils/errorHandler';
 
 // --- 主题配置系统 ---
 
@@ -294,38 +296,7 @@ const MultiSelectContextDropdown: React.FC<{
   );
 };
 
-interface SessionParticipant {
-  session_role_id: number;
-  role_ref: string;
-  role_id: number;
-  role_name: string;
-}
-
-interface Session {
-  id: number;
-  topic: string;
-  flow_template_id: number;
-  flow_template_name?: string;
-  status: 'not_started' | 'running' | 'paused' | 'finished';
-  current_step_index: number;
-  loop_counters: Record<number, number>;
-  participants: SessionParticipant[];
-  created_at: string;
-  updated_at: string;
-}
-
-interface Message {
-  id: number;
-  session_id: number;
-  speaker_session_role_id: number;
-  speaker_role_name: string;
-  target_session_role_id?: number;
-  target_role_name?: string;
-  content: string;
-  content_summary?: string;
-  round_index: number;
-  created_at: string;
-}
+// Session and Message types are now imported from sessionApi
 
 // Mock API removed - now using real roleApi
 
@@ -1177,7 +1148,7 @@ const SessionManagement = ({ onPlayback }: any) => {
             {sessions.map(s => (
               <tr key={s.id} className="hover:bg-gray-50/50">
                 <td className="px-6 py-4 font-medium text-gray-900">{s.topic}</td>
-                <td className="px-6 py-4 text-gray-600">{s.flow_template_name}</td>
+                <td className="px-6 py-4 text-gray-600">Template #{s.flow_template_id}</td>
                 <td className="px-6 py-4">
                   <Badge color={s.status === 'running' ? 'green' : s.status === 'finished' ? 'gray' : 'theme'}>
                     {s.status === 'running' ? '进行中' : s.status === 'finished' ? '已结束' : '未开始'}
@@ -1207,9 +1178,13 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
   const [requiredRoles, setRequiredRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    // TODO: Replace with real API when available
-    // api.getFlows().then(res => setFlows(res.items));
-    setFlows([]); // Temporary empty flows
+    // 加载流程模板列表
+    flowApi.getFlows().then(res => {
+      setFlows(res.items);
+    }).catch(error => {
+      handleError(error, false); // 不显示用户消息，只记录错误
+      setFlows([]); // 失败时设置为空数组
+    });
     roleApi.getRoles().then(res => setRoles(res.items));
   }, []);
 
@@ -1243,9 +1218,33 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
       alert("请填写完整信息");
       return;
     }
-    // TODO: Replace with real API when available
-    const session = { id: Date.now() }; // Temporary mock session
-    onSuccess(session.id);
+
+    try {
+      // 调用真实API创建会话
+      const role_mappings = formData.role_mappings.reduce((acc, mapping) => {
+        acc[mapping.role_ref] = Number(mapping.role_id);
+        return acc;
+      }, {} as Record<string, number>);
+
+      const requestData = {
+        topic: formData.topic,
+        flow_template_id: Number(formData.flow_template_id),
+        role_mappings: role_mappings
+      };
+
+      // 临时调试日志
+      console.log('Original form data role_mappings:', formData.role_mappings);
+      console.log('Creating session with data:', requestData);
+      console.log('Role mappings details:', role_mappings);
+
+      const sessionData = await sessionApi.createSession(requestData);
+      console.log('Session created successfully:', sessionData);
+
+      onSuccess(sessionData.id);
+    } catch (error) {
+      console.error('Session creation failed:', error);
+      handleError(error);
+    }
   };
 
   return (
@@ -1311,10 +1310,17 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
-    // TODO: Replace with real API when available
-    const s = { id: sessionId, topic: "Mock Session", status: 'not_started', current_step_index: 0, participants: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as any;
-    setSession(s);
-    setMessages([]); // Temporary empty messages
+    try {
+      // 加载会话详情
+      const sessionData = await sessionApi.getSession(sessionId);
+      setSession(sessionData);
+
+      // 加载会话消息
+      const messagesData = await sessionApi.getMessages(sessionId, { page_size: 100 });
+      setMessages(messagesData.items);
+    } catch (error) {
+      handleError(error);
+    }
   };
 
   useEffect(() => { loadData(); }, [sessionId]);
@@ -1327,32 +1333,53 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
     if (!session) return;
     setGenerating(true);
     try {
-      // TODO: Replace with real API when available
-      console.log("Next step executed");
-      // const res = await api.runNextStep(session.id);
-      // setSession(res.session);
-      // if (res.message) {
-      //   setMessages(prev => [...prev, res.message]);
-      // }
-    } catch (e) {
-      alert("执行失败");
+      // 调用真实的API执行下一步
+      const result = await sessionApi.executeNextStep(session.id);
+
+      // 添加新消息到消息列表
+      if (result.message) {
+        setMessages(prev => [...prev, result.message]);
+      }
+
+      // 更新会话状态（如果后端返回了更新的会话信息）
+      if (result.execution_info) {
+        // 检查会话是否已完成
+        if (result.execution_info.is_finished) {
+          setSession(prev => prev ? {
+            ...prev,
+            status: 'finished',
+            updated_at: new Date().toISOString()
+          } : null);
+        }
+      }
+
+    } catch (error) {
+      handleError(error);
     } finally {
       setGenerating(false);
     }
   };
 
   const handleFinish = async () => {
+    if (!session) return;
+
     if (confirm("确定要结束当前会话吗？")) {
-      // TODO: Replace with real API when available
-      console.log("Session finished");
-      // await api.finishSession(sessionId);
-      // loadData();
+      try {
+        await sessionApi.terminateSession(session.id);
+        setSession(prev => prev ? {
+          ...prev,
+          status: 'finished',
+          updated_at: new Date().toISOString()
+        } : null);
+      } catch (error) {
+        handleError(error);
+      }
     }
   };
 
   if (!session) return <div className="p-10 text-center">Loading Theater...</div>;
 
-  const isFinished = session.status === 'finished';
+  const isFinished = session.status === 'finished' || session.status === 'terminated';
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col bg-gray-100 rounded-xl overflow-hidden border border-gray-300 shadow-2xl">
@@ -1365,9 +1392,9 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
               <Badge color={isFinished ? 'gray' : 'green'}>{isFinished ? '已结束' : '进行中'}</Badge>
             </h2>
             <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
-              <span>Template: {session.flow_template_name}</span>
+              <span>Template ID: {session.flow_template_id}</span>
               <span>•</span>
-              <span>Step Order: {session.current_step_index + 1}</span>
+              <span>Round: {session.current_round + 1}</span>
             </div>
           </div>
         </div>
@@ -1380,18 +1407,10 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
         <div className="w-64 bg-gray-50 border-r p-4 overflow-y-auto hidden md:flex md:flex-col justify-between">
           <div className="space-y-3 flex-1 overflow-y-auto">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Cast Members</h3>
-            {session.participants.map(p => (
-              <div key={p.session_role_id} className="bg-white p-3 rounded-lg border shadow-sm flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm
-                  ${p.role_ref.includes('老师') || p.role_ref === 'teacher' ? theme.iconBg : 'bg-green-500'}`}>
-                  {p.role_name[0]}
-                </div>
-                <div>
-                  <div className="font-bold text-sm text-gray-900">{p.role_name}</div>
-                  <div className="text-xs text-gray-500">as {p.role_ref}</div>
-                </div>
-              </div>
-            ))}
+            {/* TODO: 显示会话角色信息 */}
+            <div className="text-sm text-gray-500">
+              会话角色信息将在此处显示
+            </div>
           </div>
 
           <div className="pt-4 border-t mt-4 shrink-0">
@@ -1418,17 +1437,18 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
             )}
             
             {messages.map(msg => {
-               const isTeacher = session.participants.find(p => p.role_name === msg.speaker_role_name)?.role_ref.includes('老师');
+               // 简化的角色判断逻辑，可以根据需要扩展
+               const isTeacher = msg.speaker_role_name?.includes('老师') || false;
                // Dynamic bubble color for teacher
                const roleColor = isTeacher ? `${theme.bgSoft} ${theme.text}` : 'bg-gray-100 text-gray-900';
                return (
                 <div key={msg.id} className={`flex gap-4 max-w-3xl`}>
                   <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center shrink-0 font-bold text-gray-600 text-sm">
-                    {msg.speaker_role_name[0]}
+                    {msg.speaker_role_name?.[0] || '?'}
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-baseline gap-2">
-                      <span className="font-bold text-sm text-gray-900">{msg.speaker_role_name}</span>
+                      <span className="font-bold text-sm text-gray-900">{msg.speaker_role_name || '未知角色'}</span>
                       <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleTimeString()}</span>
                       {msg.target_role_name && <span className="text-xs text-gray-400">to {msg.target_role_name}</span>}
                     </div>
@@ -1458,7 +1478,7 @@ const SessionTheater = ({ sessionId, onExit }: any) => {
           <div className="p-4 border-t bg-white flex items-center justify-between gap-4">
              <div className="text-sm text-gray-500">
                 {!isFinished ? (
-                   <>下一步: <span className="font-medium text-gray-900">执行预设步骤 #{session.current_step_index + 1}</span></>
+                   <>下一步: <span className="font-medium text-gray-900">执行步骤 #{session.current_round + 1}</span></>
                 ) : (
                    <span className="flex items-center gap-1 text-green-600"><CheckCircle size={14}/> 对话流程已结束</span>
                 )}
@@ -1511,7 +1531,7 @@ const HistoryPage = ({ onPlayback }: any) => {
             {sessions.map(s => (
               <tr key={s.id} className="hover:bg-gray-50/50">
                 <td className="px-6 py-4 font-medium text-gray-900">{s.topic}</td>
-                <td className="px-6 py-4 text-gray-600">{s.flow_template_name}</td>
+                <td className="px-6 py-4 text-gray-600">Template #{s.flow_template_id}</td>
                 <td className="px-6 py-4 text-gray-500 text-sm">{new Date(s.updated_at).toLocaleString()}</td>
                 <td className="px-6 py-4 text-right">
                   <button onClick={() => onPlayback(s.id)} className={`${theme.text} ${theme.textHover} font-medium text-sm flex items-center gap-1 justify-end ml-auto`}>

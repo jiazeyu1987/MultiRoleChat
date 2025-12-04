@@ -43,13 +43,20 @@ class ApiClient {
       if (!response.ok) {
         // 尝试解析错误响应
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        let errorDetails: any = null;
         try {
           const errorData: ApiError = await response.json();
           errorMessage = errorData.message || errorMessage;
+          errorDetails = errorData;
         } catch {
           // 如果无法解析错误响应，使用默认错误消息
         }
-        throw new Error(errorMessage);
+        const error = new Error(errorMessage) as any;
+        error.response = {
+          data: errorDetails,
+          status: response.status,
+        };
+        throw error;
       }
 
       const data: ApiResponse<T> = await response.json();

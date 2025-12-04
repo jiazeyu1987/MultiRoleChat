@@ -231,7 +231,7 @@ class FlowEngineService:
     @staticmethod
     def _build_prompt(role: Role, step: FlowStep, context: Dict[str, Any]) -> str:
         """
-        构建LLM提示词
+        构建LLM提示词（复杂版本，保留向后兼容）
 
         Args:
             role: 发言角色
@@ -283,6 +283,51 @@ class FlowEngineService:
 请根据你的角色设定和当前任务，发表你的观点。"""
 
         return prompt
+
+    @staticmethod
+    def _build_simple_prompt(role: Role, step: FlowStep, context: Dict[str, Any]) -> str:
+        """
+        构建简单的LLM提示词，类似LLM测试页面
+
+        Args:
+            role: 发言角色
+            step: 当前步骤
+            context: 上下文信息
+
+        Returns:
+            str: 简化的提示词内容
+        """
+        # 简单的角色和任务提示
+        prompt_parts = []
+
+        # 基本角色信息
+        if role and hasattr(role, 'name'):
+            role_desc = f"你是{role.name}"
+            if hasattr(role, 'prompt') and role.prompt:
+                role_desc += f"。{role.prompt}"
+            elif hasattr(role, 'description') and role.description:
+                role_desc += f"。描述：{role.description}"
+            prompt_parts.append(role_desc)
+
+        # 会话主题
+        session_topic = context.get('session_topic', '')
+        if session_topic:
+            prompt_parts.append(f"会话主题：{session_topic}")
+
+        # 当前任务
+        if step:
+            task_desc = step.description if step.description else step.task_type
+            prompt_parts.append(f"任务：{task_desc}")
+
+        # 当前轮次信息
+        current_round = context.get('current_round', 1)
+        step_count = context.get('step_count', 0)
+        prompt_parts.append(f"第{current_round}轮对话，第{step_count + 1}个步骤")
+
+        # 简单的指令
+        prompt_parts.append("请以该角色的身份进行回应。")
+
+        return " ".join(prompt_parts)
 
     @staticmethod
     def _get_target_session_role_id(session_id: int, target_role_ref: Optional[str]) -> Optional[int]:
@@ -401,6 +446,57 @@ class FlowEngineService:
         return step.task_type in ['summarize', 'conclude']
 
     @staticmethod
+    def _check_exit_condition(session: Session, current_step: FlowStep) -> bool:
+        """
+        检查当前步骤是否满足退出条件
+
+        当前主要支持基于LLM结构化输出的退出条件：
+        - type: 'llm_accept_flag'
+          要求当前步骤对应的发言内容是JSON，并包含布尔字段 `accept`
+          当 accept 为 True 时视为满足退出条件
+        """
+        logic_config = current_step.logic_config or {}
+        exit_config = logic_config.get('exit_condition') if isinstance(logic_config, dict) else None
+
+        if not exit_config or not isinstance(exit_config, dict):
+            return False
+
+        condition_type = exit_config.get('type')
+
+        # 基于LLM输出的接受标志
+        if condition_type == 'llm_accept_flag':
+            # 找到当前步骤发言角色对应的会话角色
+            speaker_role_ref = current_step.speaker_role_ref
+            if not speaker_role_ref:
+                return False
+
+            speaker_session_role = SessionService.get_session_role_by_ref(session.id, speaker_role_ref)
+            if not speaker_session_role:
+                return False
+
+            # 获取该角色在本会话中最新的一条消息（通常就是刚刚生成的这条）
+            last_message = (
+                Message.query
+                .filter_by(session_id=session.id, speaker_session_role_id=speaker_session_role.id)
+                .order_by(Message.created_at.desc())
+                .first()
+            )
+            if not last_message or not last_message.content:
+                return False
+
+            # 尝试将消息内容解析为JSON，并读取accept字段
+            try:
+                data = json.loads(last_message.content)
+                accept_value = data.get('accept')
+                return bool(accept_value is True)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                # 非JSON或没有accept字段，则认为未满足退出条件
+                return False
+
+        # 其他类型的退出条件可以在此扩展
+        return False
+
+    @staticmethod
     def _determine_next_step(session: Session, current_step: FlowStep) -> Optional[int]:
         """
         确定下一步骤ID
@@ -412,14 +508,18 @@ class FlowEngineService:
         Returns:
             Optional[int]: 下一步骤ID，如果没有则返回None
         """
-        # 获取流程模板的所有步骤
+        # 1. 优先检查退出条件：若满足则直接结束会话
+        if FlowEngineService._check_exit_condition(session, current_step):
+            return None
+
+        # 2. 获取流程模板的所有步骤
         flow_template = FlowTemplate.query.get(session.flow_template_id)
         if not flow_template:
             return None
 
         all_steps = flow_template.steps.order_by(FlowStep.order).all()
 
-        # 查找当前步骤在列表中的位置
+        # 3. 查找当前步骤在列表中的位置
         current_index = None
         for i, step in enumerate(all_steps):
             if step.id == current_step.id:
@@ -429,11 +529,11 @@ class FlowEngineService:
         if current_index is None:
             return None
 
-        # 检查是否有下一步骤
+        # 4. 检查是否有下一步骤（线性推进）
         if current_index < len(all_steps) - 1:
             return all_steps[current_index + 1].id
 
-        # 检查循环配置
+        # 5. 检查循环配置（到达最后一步且未满足退出条件时，决定是否循环到前面）
         loop_config = current_step.loop_config_dict
         if loop_config.get('enabled', False):
             max_loops = loop_config.get('max_loops', 1)
@@ -597,6 +697,7 @@ class FlowEngineService:
     ) -> str:
         """
         使用LLM服务生成响应内容（同步版本）
+        修改为使用简单的CLI-style /api/llm/chat端点
 
         Args:
             role: 发言角色
@@ -611,37 +712,69 @@ class FlowEngineService:
             FlowExecutionError: LLM生成失败
         """
         try:
-            # 运行异步方法
-            loop = None
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # 如果循环正在运行，我们需要在新线程中运行
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(asyncio.run, FlowEngineService._generate_llm_response(
-                            role, step, context, llm_provider
-                        ))
-                        return future.result()
+            import requests
+            import json
+            from flask import current_app
+
+            # 构建简单的提示词，类似LLM测试页面
+            prompt = FlowEngineService._build_simple_prompt(role, step, context)
+
+            # 构建历史消息
+            history_messages = []
+            history = context.get('history_messages', [])
+
+            # 添加历史消息到history数组
+            for msg in history[-10:]:  # 只取最近10条消息避免上下文过长
+                role_name = msg.get('speaker_role', '用户')
+                content = msg.get('content', '')
+                if content:
+                    # 将角色名称转换为简单的user/assistant格式
+                    msg_role = 'assistant' if role_name != '用户' else 'user'
+                    history_messages.append({
+                        'role': msg_role,
+                        'content': f"{role_name}: {content}"
+                    })
+
+            # 调用简单的 /api/llm/chat 端点
+            api_url = 'http://localhost:5010/api/llm/chat'
+
+            payload = {
+                'message': prompt,
+                'history': history_messages,
+                'provider': llm_provider
+            }
+
+            # 发送请求到LLM聊天端点
+            response = requests.post(
+                api_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success') and 'data' in result:
+                    return result['data']['response']
                 else:
-                    # 如果循环存在但未运行，直接使用
-                    return loop.run_until_complete(FlowEngineService._generate_llm_response(
-                        role, step, context, llm_provider
-                    ))
-            except RuntimeError:
-                # 没有事件循环，创建新的
-                return asyncio.run(FlowEngineService._generate_llm_response(
-                    role, step, context, llm_provider
-                ))
+                    error_msg = result.get('message', 'LLM调用失败')
+                    raise FlowExecutionError(f"LLM API返回错误: {error_msg}")
+            else:
+                raise FlowExecutionError(f"LLM API请求失败，状态码: {response.status_code}")
+
+        except requests.exceptions.RequestException as e:
+            # 网络请求失败，回退到模拟模式
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"LLM API请求失败，使用模拟响应: {str(e)}")
+            return FlowEngineService._build_simple_prompt(role, step, context)
 
         except Exception as e:
-            # 如果LLM服务失败，回退到模拟模式
+            # 其他错误，也回退到模拟模式
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"LLM服务不可用，使用模拟响应: {str(e)}")
-
-            # 返回模拟响应
-            return FlowEngineService._build_prompt(role, step, context)
+            return FlowEngineService._build_simple_prompt(role, step, context)
 
     @staticmethod
     def execute_next_step_sync(session_id: int) -> Tuple[Message, Dict[str, Any]]:

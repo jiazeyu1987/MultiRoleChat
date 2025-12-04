@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会话创建问题修复测试</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <h1 class="text-2xl font-bold mb-6">会话创建400错误修复验证</h1>
+
+    <div class="space-y-6 max-w-4xl">
+        <!-- 问题诊断 -->
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-red-800 mb-3">🔍 问题诊断</h2>
+            <div class="text-sm text-red-700 space-y-2">
+                <p><strong>原始错误:</strong> 创建会话时返回400错误</p>
+                <p><strong>错误原因:</strong> 前端发送的role_mappings格式与后端期望不匹配</p>
+                <p><strong>前端发送:</strong> <code class="bg-red-100 px-1">[{"role_ref": "老师", "role_id": 1}]</code></p>
+                <p><strong>后端期望:</strong> <code class="bg-red-100 px-1">{"老师": 1, "学生": 2}</code></p>
+            </div>
+        </div>
+
+        <!-- 修复方案 -->
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-green-800 mb-3">✅ 已实施的修复</h2>
+            <div class="text-sm text-green-700 space-y-2">
+                <p><strong>前端修复:</strong></p>
+                <pre class="bg-green-100 p-2 rounded text-xs overflow-x-auto">
+// 修复前:
+role_mappings: formData.role_mappings.map(mapping => ({
+  role_ref: mapping.role_ref,
+  role_id: Number(mapping.role_id)
+}))
+
+// 修复后:
+role_mappings: formData.role_mappings.reduce((acc, mapping) => {
+  acc[mapping.role_ref] = Number(mapping.role_id);
+  return acc;
+}, {} as Record&lt;string, number&gt;)</pre>
+                <p><strong>类型定义修复:</strong> 更新 CreateSessionRequest 接口</p>
+                <p><strong>格式转换:</strong> 数组格式 → 字典格式</p>
+            </div>
+        </div>
+
+        <!-- 预期数据流 -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-blue-800 mb-3">🔄 预期数据流</h2>
+            <div class="text-sm text-blue-700 space-y-2">
+                <p><strong>用户操作:</strong> 在会话剧场选择模板并配置角色</p>
+                <p><strong>前端处理:</strong> 将角色映射转换为字典格式</p>
+                <p><strong>API请求:</strong></p>
+                <pre class="bg-blue-100 p-2 rounded text-xs overflow-x-auto">POST /api/sessions
+{
+  "name": "高中物理教学",
+  "topic": "高中物理教学",
+  "flow_template_id": 4,
+  "role_mappings": {
+    "老师": 1,
+    "学生": 2
+  }
+}</pre>
+                <p><strong>后端验证:</strong> 通过Schema验证，创建会话和角色映射</p>
+                <p><strong>响应:</strong> 201 Created，返回会话详情</p>
+            </div>
+        </div>
+
+        <!-- 验证步骤 -->
+        <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-purple-800 mb-3">🧪 验证步骤</h2>
+            <div class="text-sm text-purple-700 space-y-2">
+                <ol class="list-decimal list-inside space-y-1">
+                    <li>启动前端服务: http://localhost:3003</li>
+                    <li>启动后端服务: python run.py</li>
+                    <li>访问"会话剧场"标签页</li>
+                    <li>点击"创建新会话"</li>
+                    <li>选择流程模板</li>
+                    <li>配置角色映射</li>
+                    <li>点击"创建并进入"</li>
+                    <li>检查是否成功创建会话并进入剧场界面</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- 可能的后续问题 -->
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-yellow-800 mb-3">⚠️ 可能的后续问题</h2>
+            <div class="text-sm text-yellow-700 space-y-2">
+                <p><strong>1. 角色ID不存在:</strong> 确保选择的角色在数据库中存在</p>
+                <p><strong>2. 流程模板不存在:</strong> 确保选择的流程模板ID有效</p>
+                <p><strong>3. 数据库连接:</strong> 确保后端能正常连接数据库</p>
+                <p><strong>4. 权限问题:</strong> 检查API访问权限配置</p>
+                <p><strong>5. 会话剧场显示:</strong> 会话创建后，检查剧场界面是否正确加载</p>
+            </div>
+        </div>
+
+        <!-- 成功标志 -->
+        <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-emerald-800 mb-3">🎯 修复成功标志</h2>
+            <div class="text-sm text-emerald-700 space-y-2">
+                <p>✅ 前端不再发送400错误</p>
+                <p>✅ 后端成功创建会话记录</p>
+                <p>✅ 角色映射正确保存到数据库</p>
+                <p>✅ 用户能够进入会话剧场界面</p>
+                <p>✅ "执行下一步"按钮可以正常工作</p>
+            </div>
+        </div>
+
+        <!-- 调试信息 -->
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">🐛 调试信息</h2>
+            <div class="text-sm text-gray-700 space-y-2">
+                <p><strong>浏览器控制台:</strong> 查看网络请求和错误信息</p>
+                <p><strong>后端日志:</strong> 检查SQL查询和错误详情</p>
+                <p><strong>数据库:</strong> 验证sessions和session_roles表的数据</p>
+                <p><strong>API测试:</strong> 可以使用Postman或curl测试API端点</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8 p-4 bg-gray-800 text-white rounded-lg">
+        <h3 class="font-semibold mb-2">📋 总结</h3>
+        <div class="text-sm space-y-1">
+            <p>✅ 修复了前端role_mappings数据格式问题</p>
+            <p>✅ 更新了TypeScript类型定义</p>
+            <p>✅ 确保前后端数据格式一致性</p>
+            <p>🎯 预期效果: 用户现在应该能够成功创建会话并进入会话剧场</p>
+        </div>
+    </div>
+</body>
+</html>
