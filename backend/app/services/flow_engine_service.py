@@ -136,7 +136,7 @@ class FlowEngineService:
 
         # 根据上下文范围选择历史消息
         messages = FlowEngineService._select_context_messages(session, current_step)
-        context['history_messages'] = [
+        history_messages = [
             {
                 'id': msg.id,
                 'speaker_role': msg.speaker_role.role.name if msg.speaker_role and msg.speaker_role.role else None,
@@ -148,6 +148,36 @@ class FlowEngineService:
             }
             for msg in messages
         ]
+        context['history_messages'] = history_messages
+
+        # 为“对象(target)”构建最近一次发言（如果配置了 target_role_ref）
+        target_last_message = None
+        if current_step.target_role_ref:
+            # 尝试找到目标角色对应的 SessionRole
+            target_session_role = SessionService.get_session_role_by_ref(
+                session.id, current_step.target_role_ref
+            )
+            if target_session_role:
+                last_target_msg = (
+                    Message.query
+                    .filter_by(
+                        session_id=session.id,
+                        speaker_session_role_id=target_session_role.id
+                    )
+                    .order_by(Message.created_at.desc())
+                    .first()
+                )
+                if last_target_msg:
+                    target_last_message = {
+                        'id': last_target_msg.id,
+                        'speaker_role': target_session_role.role.name if target_session_role.role else current_step.target_role_ref,
+                        'content': last_target_msg.content,
+                        'round_index': last_target_msg.round_index,
+                        'section': last_target_msg.section,
+                        'created_at': last_target_msg.created_at.isoformat() if last_target_msg.created_at else None
+                    }
+
+        context['target_last_message'] = target_last_message
 
         # 添加当前步骤信息
         context['current_step'] = {

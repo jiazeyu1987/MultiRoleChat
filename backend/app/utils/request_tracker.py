@@ -117,9 +117,8 @@ class RequestTracker:
             extra_parts = []
             for key, value in extra_data.items():
                 if key == "content" and isinstance(value, str):
-                    # 内容字段显示长度和开头部分
-                    content_preview = value[:100] + "..." if len(value) > 100 else value
-                    extra_parts.append(f"{key}长度={len(value)}, 预览='{content_preview}'")
+                    # 为了便于排查问题，这里完整输出内容，而不仅仅是预览
+                    extra_parts.append(f"{key}_length={len(value)}, {key}='{value}'")
                 else:
                     extra_parts.append(f"{key}={value}")
 
