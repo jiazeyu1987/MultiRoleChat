@@ -5,7 +5,7 @@ class CreateSessionSchema(Schema):
     """创建会话模式"""
     topic = fields.String(required=True, validate=validate.Length(min=1, max=200))
     flow_template_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    role_mappings = fields.Dict(required=True)  # {"teacher": 1, "student": 2}
+    role_mappings = fields.Dict(required=False, missing=None)  # {"teacher": 1, "student": 2} - 现在是可选的
     user_id = fields.Integer()
 
     @validates('flow_template_id')
@@ -18,8 +18,9 @@ class CreateSessionSchema(Schema):
     @validates('role_mappings')
     def validate_role_mappings(self, value):
         """验证角色映射"""
-        if not value:
-            raise ValidationError('角色映射不能为空')
+        # 如果值为None或空，跳过验证（支持无需角色映射的流程）
+        if value is None or not value:
+            return
 
         from app.models import Role
         for role_ref, role_id in value.items():

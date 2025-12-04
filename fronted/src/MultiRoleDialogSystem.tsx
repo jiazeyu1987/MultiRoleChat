@@ -1176,6 +1176,7 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
   const [flows, setFlows] = useState<FlowTemplate[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [requiredRoles, setRequiredRoles] = useState<string[]>([]);
+  const [needsRoleMapping, setNeedsRoleMapping] = useState(true); // 新增：是否需要角色映射
 
   useEffect(() => {
     // 加载流程模板列表
@@ -1189,19 +1190,32 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
   }, []);
 
   useEffect(() => {
-    if (formData.flow_template_id) {
+    if (formData.flow_template_id && flows.length > 0) {
       const flow = flows.find(f => f.id === Number(formData.flow_template_id));
       if (flow) {
         const refs = Array.from(new Set((flow.steps || []).map(s => s.speaker_role_ref).filter(Boolean)));
         setRequiredRoles(refs);
         if (flow.topic) setFormData(prev => ({ ...prev, topic: flow.topic || '' }));
-        setFormData(prev => ({
-          ...prev,
-          role_mappings: refs.map(ref => {
-            const matchedRole = roles.find(r => r.name === ref);
-            return { role_ref: ref, role_id: matchedRole ? matchedRole.id : '' };
-          })
-        }));
+
+        // 检查是否是无需角色映射的流程
+        // 如果流程类型包含"simple"或"business_discussion"，则无需角色映射
+        const needsMapping = !flow.type?.includes('simple') &&
+                           !flow.type?.includes('business_discussion') &&
+                           refs.length > 0;
+        setNeedsRoleMapping(needsMapping);
+
+        if (needsMapping) {
+          setFormData(prev => ({
+            ...prev,
+            role_mappings: refs.map(ref => {
+              const matchedRole = roles.find(r => r.name === ref);
+              return { role_ref: ref, role_id: matchedRole ? matchedRole.id : '' };
+            })
+          }));
+        } else {
+          // 无需角色映射的流程
+          setFormData(prev => ({ ...prev, role_mappings: [] }));
+        }
       }
     }
   }, [formData.flow_template_id, flows, roles]);
@@ -1214,28 +1228,37 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
   };
 
   const handleCreate = async () => {
-    if (!formData.topic || !formData.flow_template_id || formData.role_mappings.some(m => !m.role_id)) {
+    // 验证必填字段
+    if (!formData.topic || !formData.flow_template_id) {
       alert("请填写完整信息");
       return;
     }
 
-    try {
-      // 调用真实API创建会话
-      const role_mappings = formData.role_mappings.reduce((acc, mapping) => {
-        acc[mapping.role_ref] = Number(mapping.role_id);
-        return acc;
-      }, {} as Record<string, number>);
+    // 如果需要角色映射，验证角色映射是否完整
+    if (needsRoleMapping && formData.role_mappings.some(m => !m.role_id)) {
+      alert("请完成所有角色映射");
+      return;
+    }
 
-      const requestData = {
+    try {
+      // 构建请求数据
+      let requestData: any = {
         topic: formData.topic,
-        flow_template_id: Number(formData.flow_template_id),
-        role_mappings: role_mappings
+        flow_template_id: Number(formData.flow_template_id)
       };
 
-      // 临时调试日志
-      console.log('Original form data role_mappings:', formData.role_mappings);
+      // 只有在需要角色映射时才包含role_mappings
+      if (needsRoleMapping && formData.role_mappings.length > 0) {
+        const role_mappings = formData.role_mappings.reduce((acc, mapping) => {
+          acc[mapping.role_ref] = Number(mapping.role_id);
+          return acc;
+        }, {} as Record<string, number>);
+        requestData.role_mappings = role_mappings;
+      }
+      // 如果不需要角色映射，不传role_mappings字段（后端会处理为null）
+
       console.log('Creating session with data:', requestData);
-      console.log('Role mappings details:', role_mappings);
+      console.log('Needs role mapping:', needsRoleMapping);
 
       const sessionData = await sessionApi.createSession(requestData);
       console.log('Session created successfully:', sessionData);
@@ -1269,7 +1292,7 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
           </select>
         </div>
 
-        {requiredRoles.length > 0 && (
+        {needsRoleMapping && requiredRoles.length > 0 && (
           <div className={`p-4 rounded-lg border ${theme.bgSoft} ${theme.border}`}>
             <h3 className={`font-bold ${theme.text} mb-3 flex items-center gap-2`}><Users size={18}/> 角色映射 (Casting)</h3>
             <div className="space-y-3">
@@ -1278,7 +1301,7 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
                   <div className={`w-24 text-sm font-medium ${theme.text} text-right`}>
                     {ref} <span className="opacity-50">→</span>
                   </div>
-                  <select 
+                  <select
                     className={`flex-1 border rounded px-3 py-2 text-sm ${theme.ring}`}
                     value={formData.role_mappings.find(m => m.role_ref === ref)?.role_id || ''}
                     onChange={e => updateMapping(ref, e.target.value)}
@@ -1290,6 +1313,25 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
               ))}
             </div>
             <p className={`text-xs ${theme.text} mt-2 opacity-70`}>* 系统已尝试根据名称自动匹配角色</p>
+          </div>
+        )}
+
+        {!needsRoleMapping && requiredRoles.length > 0 && (
+          <div className={`p-4 rounded-lg border ${theme.bgSoft} ${theme.border}`}>
+            <h3 className={`font-bold ${theme.text} mb-3 flex items-center gap-2`}><CheckCircle size={18}/> 自动角色配置</h3>
+            <div className="space-y-2">
+              <p className={`text-sm ${theme.text} opacity-80`}>
+                此流程将自动使用以下角色参与讨论：
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {requiredRoles.map(ref => (
+                  <span key={ref} className={`px-3 py-1 rounded-full text-xs font-medium ${theme.bgPrimary} ${theme.textPrimary}`}>
+                    {ref}
+                  </span>
+                ))}
+              </div>
+              <p className={`text-xs ${theme.text} mt-2 opacity-70`}>* 系统将自动匹配对应的角色配置</p>
+            </div>
           </div>
         )}
 

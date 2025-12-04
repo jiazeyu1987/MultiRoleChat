@@ -41,25 +41,26 @@ class FlowEngineService:
             if not current_step:
                 raise FlowExecutionError(f"当前步骤ID {session.current_step_id} 不存在")
 
-            # 获取发言角色
-            speaker_session_role = SessionService.get_session_role_by_ref(
-                session_id, current_step.speaker_role_ref
-            )
-            if not speaker_session_role:
+            # 获取发言角色（支持有角色映射和无角色映射两种模式）
+            role = SessionService.get_role_for_execution(session_id, current_step.speaker_role_ref)
+            if not role:
                 raise FlowExecutionError(f"发言角色 '{current_step.speaker_role_ref}' 未找到")
+
+            # 如果有角色映射，获取session_role；否则创建虚拟的session_role对象
+            speaker_session_role = SessionService.get_session_role_by_ref(session_id, current_step.speaker_role_ref)
 
             # 构建上下文
             context = FlowEngineService._build_context(session, current_step)
 
             # 使用LLM服务生成内容
             prompt_content = FlowEngineService._generate_llm_response_sync(
-                speaker_session_role.role, current_step, context
+                role, current_step, context
             )
 
             # 创建消息
             message = Message(
                 session_id=session_id,
-                speaker_session_role_id=speaker_session_role.id,
+                speaker_session_role_id=speaker_session_role.id if speaker_session_role else None,
                 target_session_role_id=FlowEngineService._get_target_session_role_id(
                     session_id, current_step.target_role_ref
                 ),

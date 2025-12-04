@@ -54,9 +54,12 @@ class SessionService:
             if not flow_template:
                 raise SessionNotFoundError(f"流程模板ID {session_data['flow_template_id']} 不存在")
 
-            # 验证角色映射
-            role_mappings = session_data['role_mappings']
-            SessionService._validate_role_mappings(flow_template, role_mappings)
+            # 获取角色映射（可选）
+            role_mappings = session_data.get('role_mappings')
+
+            # 如果提供了角色映射，进行验证
+            if role_mappings is not None:
+                SessionService._validate_role_mappings(flow_template, role_mappings)
 
             # 创建会话
             session = Session(
@@ -74,11 +77,14 @@ class SessionService:
             db.session.add(session)
             db.session.flush()  # 获取会话ID
 
-            # 创建会话角色映射
-            SessionService._create_session_roles(session.id, role_mappings)
-
-            # 保存角色快照
-            session.roles_snapshot_dict = SessionService._create_roles_snapshot(role_mappings)
+            # 创建会话角色映射（如果提供了角色映射）
+            if role_mappings is not None:
+                SessionService._create_session_roles(session.id, role_mappings)
+                # 保存角色快照
+                session.roles_snapshot_dict = SessionService._create_roles_snapshot(role_mappings)
+            else:
+                # 无角色映射模式下，创建空的角色快照
+                session.roles_snapshot_dict = {}
 
             db.session.commit()
             return session
@@ -440,6 +446,33 @@ class SessionService:
             session_id=session_id,
             role_ref=role_ref
         ).first()
+
+    @staticmethod
+    def get_role_for_execution(session_id: int, role_ref: str) -> Optional[Role]:
+        """
+        获取执行步骤时需要的角色对象
+        支持有角色映射和无角色映射两种模式
+
+        Args:
+            session_id: 会话ID
+            role_ref: 角色引用
+
+        Returns:
+            Optional[Role]: 角色对象
+        """
+        # 首先尝试从会话角色映射中获取
+        session_role = SessionService.get_session_role_by_ref(session_id, role_ref)
+        if session_role and session_role.role:
+            return session_role.role
+
+        # 如果没有映射，尝试直接通过角色名称查找
+        role = Role.query.filter_by(name=role_ref).first()
+        if role:
+            return role
+
+        # 如果还是找不到，尝试模糊匹配
+        role = Role.query.filter(Role.name.contains(role_ref)).first()
+        return role
 
     @staticmethod
     def is_session_executable(session_id: int) -> bool:
