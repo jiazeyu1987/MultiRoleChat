@@ -49,6 +49,19 @@ class FlowEngineService:
             # 如果有角色映射，获取session_role；否则创建虚拟的session_role对象
             speaker_session_role = SessionService.get_session_role_by_ref(session_id, current_step.speaker_role_ref)
 
+            # 如果没有session_role，创建一个临时的SessionRole记录
+            if not speaker_session_role:
+                # 创建一个临时的SessionRole记录（仅用于无角色映射模式）
+                temp_session_role = SessionRole(
+                    session_id=session_id,
+                    role_ref=current_step.speaker_role_ref,
+                    role_id=role.id
+                )
+                db.session.add(temp_session_role)
+                db.session.flush()  # 获取ID
+
+                speaker_session_role = temp_session_role
+
             # 构建上下文
             context = FlowEngineService._build_context(session, current_step)
 
@@ -109,11 +122,16 @@ class FlowEngineService:
         Returns:
             Dict: 上下文字典
         """
+        # 获取角色映射并添加防御性检查
+        role_mapping = SessionService.get_role_mapping(session.id)
+        if not isinstance(role_mapping, dict):
+            role_mapping = {}  # 降级处理：如果不是字典，使用空字典
+
         context = {
             'session_topic': session.topic,
             'current_round': session.current_round,
             'step_count': session.executed_steps_count,
-            'session_roles': SessionService.get_role_mapping(session.id)
+            'session_roles': role_mapping
         }
 
         # 根据上下文范围选择历史消息
@@ -121,8 +139,8 @@ class FlowEngineService:
         context['history_messages'] = [
             {
                 'id': msg.id,
-                'speaker_role': msg.speaker_role.role_detail.name if msg.speaker_role else None,
-                'target_role': msg.target_role.role_detail.name if msg.target_role else None,
+                'speaker_role': msg.speaker_role.role.name if msg.speaker_role and msg.speaker_role.role else None,
+                'target_role': msg.target_role.role.name if msg.target_role and msg.target_role.role else None,
                 'content': msg.content,
                 'round_index': msg.round_index,
                 'section': msg.section,
@@ -161,63 +179,74 @@ class FlowEngineService:
 
         # 创建角色名称到session_role_id的映射
         role_name_to_session_ids = {}
-        for mapping in role_mapping:
-            role_name = mapping.get('role_name')
-            if role_name:
+        for role_ref, role_id in role_mapping.items():
+            # 确保role_ref是字符串类型
+            if not isinstance(role_ref, str):
+                continue  # 跳过非字符串的键
+
+            # 获取SessionRole对象以获取session_role_id
+            session_role = SessionRole.query.filter_by(
+                session_id=session.id,
+                role_ref=role_ref
+            ).first()
+            if session_role:
+                role_name = str(role_ref)  # 确保是字符串
                 if role_name not in role_name_to_session_ids:
                     role_name_to_session_ids[role_name] = []
-                role_name_to_session_ids[role_name].append(mapping['session_role_id'])
+                role_name_to_session_ids[role_name].append(session_role.id)
 
-        # 根据上下文范围获取消息
-        if current_step.context_scope == 'none':
-            return []
+        # 根据上下文范围获取消息（兼容字符串 / 列表 / 字典）
+        scope = current_step.context_scope
 
-        elif current_step.context_scope == 'last_message':
-            return base_query.order_by(Message.created_at.desc()).limit(1).all()
+        # 1) 字符串类型：处理基础范围 + 角色名 / JSON 字符串
+        if isinstance(scope, str):
+            if scope == 'none':
+                return []
 
-        elif current_step.context_scope == 'last_round':
-            # 获取当前轮次的最后一条消息
-            last_round_message = base_query.filter(
-                Message.round_index == session.current_round - 1
-            ).order_by(Message.created_at.desc()).first()
+            elif scope == 'last_message':
+                return base_query.order_by(Message.created_at.desc()).limit(1).all()
 
-            if last_round_message:
-                # 获取该轮次的所有消息
-                return base_query.filter(
-                    and_(
-                        Message.round_index == session.current_round - 1
-                    )
-                ).order_by(Message.created_at.asc()).all()
-            return []
+            elif scope == 'last_round':
+                # 获取当前轮次的最后一条消息
+                last_round_message = base_query.filter(
+                    Message.round_index == session.current_round - 1
+                ).order_by(Message.created_at.desc()).first()
 
-        elif current_step.context_scope == 'last_n_messages':
-            n = current_step.context_param_dict.get('n', 5)
-            return base_query.order_by(Message.created_at.desc()).limit(n).all()
+                if last_round_message:
+                    # 获取该轮次的所有消息
+                    return base_query.filter(
+                        and_(
+                            Message.round_index == session.current_round - 1
+                        )
+                    ).order_by(Message.created_at.asc()).all()
+                return []
 
-        elif current_step.context_scope == 'all':
-            return base_query.order_by(Message.created_at.asc()).all()
+            elif scope == 'last_n_messages':
+                n = current_step.context_param.get('n', 5)
+                return base_query.order_by(Message.created_at.desc()).limit(n).all()
 
-        # 处理角色筛选（支持单个角色和多个角色）
-        else:
+            elif scope == 'all':
+                return base_query.order_by(Message.created_at.asc()).all()
+
+            # 角色筛选：单个角色名或 JSON 字符串数组
             role_names = []
 
-            # 检查是否是单个角色名称（向后兼容）
-            if current_step.context_scope in role_name_to_session_ids:
-                role_names = [current_step.context_scope]
-            # 检查是否是JSON格式的多个角色名称
+            # 单个角色名（向后兼容）
+            if scope in role_name_to_session_ids:
+                role_names = [scope]
             else:
+                # JSON 字符串形式的多个角色名
                 try:
-                    import json
-                    # 尝试解析为JSON数组
-                    parsed_scope = json.loads(current_step.context_scope) if current_step.context_scope else []
+                    parsed_scope = json.loads(scope) if scope else []
                     if isinstance(parsed_scope, list):
-                        # 过滤出有效的角色名称
-                        role_names = [name for name in parsed_scope if name in role_name_to_session_ids]
-                except (json.JSONDecodeError, TypeError):
-                    # 不是JSON格式，也不在角色列表中，返回空
+                        role_names = [
+                            name for name in parsed_scope
+                            if isinstance(name, str) and name in role_name_to_session_ids
+                        ]
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    # 不是 JSON 格式或类型不匹配，忽略
                     pass
 
-            # 如果有有效的角色名称，筛选消息
             if role_names:
                 all_session_role_ids = []
                 for role_name in role_names:
@@ -227,6 +256,43 @@ class FlowEngineService:
                     Message.speaker_session_role_id.in_(all_session_role_ids)
                 ).order_by(Message.created_at.asc()).all()
 
+            return []
+
+        # 2) 列表类型：直接视为角色名数组
+        elif isinstance(scope, list):
+            role_names = [
+                name for name in scope
+                if isinstance(name, str) and name in role_name_to_session_ids
+            ]
+            if role_names:
+                all_session_role_ids = []
+                for role_name in role_names:
+                    all_session_role_ids.extend(role_name_to_session_ids[role_name])
+
+                return base_query.filter(
+                    Message.speaker_session_role_id.in_(all_session_role_ids)
+                ).order_by(Message.created_at.asc()).all()
+
+            return []
+
+        # 3) 字典类型：使用 key 作为角色名列表（预留扩展）
+        elif isinstance(scope, dict):
+            role_names = [
+                name for name in scope.keys()
+                if isinstance(name, str) and name in role_name_to_session_ids
+            ]
+            if role_names:
+                all_session_role_ids = []
+                for role_name in role_names:
+                    all_session_role_ids.extend(role_name_to_session_ids[role_name])
+
+                return base_query.filter(
+                    Message.speaker_session_role_id.in_(all_session_role_ids)
+                ).order_by(Message.created_at.asc()).all()
+
+            return []
+
+        # 其他未知类型：不提供上下文
         return []
 
     @staticmethod
@@ -651,9 +717,12 @@ class FlowEngineService:
             # 获取目标角色信息
             target_role_ref = step.target_role_ref
             if target_role_ref and 'session_roles' in context:
-                target_role_info = context['session_roles'].get(target_role_ref)
-                if target_role_info:
-                    task_info['target_role'] = target_role_info.get('name', '')
+                target_role_id = context['session_roles'].get(target_role_ref)
+                if target_role_id:
+                    # 通过role_id获取角色信息
+                    target_role = Role.query.get(target_role_id)
+                    if target_role:
+                        task_info['target_role'] = target_role.name
 
             # 调用LLM服务生成响应
             response = await conversation_llm_service.generate_response_with_context(

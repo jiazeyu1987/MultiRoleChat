@@ -59,7 +59,7 @@ export interface ExecutionInfo {
 export interface CreateSessionRequest {
   topic: string;
   flow_template_id: number;
-  role_mappings: Record<string, number>; // {"role_ref": role_id}
+  role_mappings?: Record<string, number>; // {"role_ref": role_id} - 现在是可选的
   user_id?: number;
 }
 
@@ -143,6 +143,15 @@ export const sessionApi = {
    */
   async createSession(sessionData: CreateSessionRequest): Promise<Session> {
     return apiClient.post<Session>('/api/sessions', sessionData);
+  },
+
+  /**
+   * 开始会话执行
+   */
+  async startSession(sessionId: number): Promise<Session> {
+    return apiClient.post<Session>(`/api/sessions/${sessionId}/control`, {
+      action: 'start'
+    });
   },
 
   /**

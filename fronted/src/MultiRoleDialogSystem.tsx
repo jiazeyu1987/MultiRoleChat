@@ -1263,7 +1263,15 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
       const sessionData = await sessionApi.createSession(requestData);
       console.log('Session created successfully:', sessionData);
 
-      onSuccess(sessionData.id);
+      // 自动启动会话
+      try {
+        const startedSession = await sessionApi.startSession(sessionData.id);
+        console.log('Session started successfully:', startedSession);
+        onSuccess(sessionData.id);
+      } catch (startError) {
+        console.error('Failed to start session:', startError);
+        handleError(startError);
+      }
     } catch (error) {
       console.error('Session creation failed:', error);
       handleError(error);

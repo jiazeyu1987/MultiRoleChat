@@ -174,8 +174,16 @@ class MessageService:
 
         flow = []
         for message in messages:
-            speaker_name = message.speaker_role.role_detail.name if message.speaker_role else '未知角色'
-            target_name = message.target_role.role_detail.name if message.target_role else None
+            speaker_name = (
+                message.speaker_role.role.name
+                if message.speaker_role and message.speaker_role.role
+                else '未知角色'
+            )
+            target_name = (
+                message.target_role.role.name
+                if message.target_role and message.target_role.role
+                else None
+            )
 
             flow.append({
                 'id': message.id,
