@@ -31,6 +31,9 @@ import {
 // --- LLM测试页面组件 ---
 import LLMTestPage from './LLMTestPage';
 
+// --- 增强版会话剧场组件 ---
+import EnhancedSessionTheater from './components/EnhancedSessionTheater';
+
 // --- API和类型导入 ---
 import { roleApi } from './api/roleApi';
 import { flowApi, FlowTemplate, FlowStep } from './api/flowApi';
@@ -1120,7 +1123,7 @@ const SessionManagement = ({ onPlayback }: any) => {
   }
 
   if (view === 'theater' && activeSessionId) {
-    return <SessionTheater sessionId={activeSessionId} onExit={() => { setView('list'); setActiveSessionId(null); }} />;
+    return <EnhancedSessionTheater sessionId={activeSessionId} onExit={() => { setView('list'); setActiveSessionId(null); }} theme={themes[theme]} />;
   }
 
   return (

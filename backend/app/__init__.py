@@ -140,6 +140,14 @@ def register_api(app):
     from app.api.llm import register_llm_routes
     register_llm_routes(api)
 
+    # 步骤进度和LLM交互接口
+    from app.api.step_progress import register_step_progress_api
+    from app.api.llm_interactions import register_llm_interaction_api
+    from app.api.realtime import register_realtime_api
+    register_step_progress_api(api)
+    register_llm_interaction_api(api)
+    register_realtime_api(api)
+
 
 def register_error_handlers(app):
     """注册错误处理器"""

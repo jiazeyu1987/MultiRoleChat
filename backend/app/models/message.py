@@ -11,6 +11,15 @@ class Message(db.Model):
     speaker_session_role_id = db.Column(db.Integer, db.ForeignKey('session_roles.id'), nullable=True)  # 允许为空以支持无角色映射模式
     target_session_role_id = db.Column(db.Integer, db.ForeignKey('session_roles.id'))  # 目标角色ID
     reply_to_message_id = db.Column(db.Integer, db.ForeignKey('messages.id'))  # 回复消息ID
+
+    # 性能索引定义
+    __table_args__ = (
+        db.Index('idx_messages_session_created', 'session_id', 'created_at'),
+        db.Index('idx_messages_speaker_session_role', 'speaker_session_role_id'),
+        db.Index('idx_messages_round_index', 'round_index'),
+        db.Index('idx_messages_reply_to', 'reply_to_message_id'),
+        db.Index('idx_messages_session_round_created', 'session_id', 'round_index', 'created_at'),
+    )
     content = db.Column(db.Text, nullable=False)  # 消息内容
     content_summary = db.Column(db.String(500))  # 内容摘要
     round_index = db.Column(db.Integer, default=1)  # 轮次索引

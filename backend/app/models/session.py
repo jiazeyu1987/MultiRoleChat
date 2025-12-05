@@ -11,6 +11,15 @@ class Session(db.Model):
     user_id = db.Column(db.Integer)  # 用户ID，暂未实现用户系统
     topic = db.Column(db.String(200), nullable=False)  # 会话主题
     flow_template_id = db.Column(db.Integer, db.ForeignKey('flow_templates.id'), nullable=False)
+
+    # 性能索引定义
+    __table_args__ = (
+        db.Index('idx_sessions_user_id', 'user_id'),
+        db.Index('idx_sessions_status_created', 'status', 'created_at'),
+        db.Index('idx_sessions_flow_template', 'flow_template_id'),
+        db.Index('idx_sessions_updated_at', 'updated_at'),
+        db.Index('idx_sessions_status_updated_composite', 'status', 'updated_at', 'id'),
+    )
     flow_snapshot = db.Column(db.Text)  # 流程模板快照，JSON格式
     roles_snapshot = db.Column(db.Text)  # 参与角色快照，JSON格式
     status = db.Column(db.String(20), default='not_started')  # not_started/running/paused/finished/failed

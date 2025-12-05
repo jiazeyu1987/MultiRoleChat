@@ -3,6 +3,7 @@
 
 基于simple_llm.py的重写版本，专注于Anthropic集成
 大幅简化架构复杂度，保持API兼容性
+集成安全API密钥管理和权限控制
 """
 
 import os
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 
 from ..simple_llm import SimpleLLMService, LLMResponse, get_llm_service
 from ...utils.request_tracker import RequestTracker, log_llm_info, log_llm_error, log_llm_warning
+from ..security_service import get_api_key_manager, require_permission, PermissionLevel
+from ..rate_limit_service import get_rate_limit_service, RateLimitType
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +38,11 @@ class SimpleLLMManager:
 
     def __init__(self):
         """初始化简化LLM管理器"""
-        self.api_key = os.getenv('ANTHROPIC_API_KEY')
+        self.security_manager = get_api_key_manager()
+        self.rate_limiter = get_rate_limit_service()
+
+        # 通过安全服务获取API密钥
+        self.api_key = self.security_manager.get_safe_api_key('anthropic')
         self.default_model = os.getenv('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022')
         self.max_tokens = int(os.getenv('ANTHROPIC_MAX_TOKENS', '4096'))
 

@@ -5,7 +5,7 @@
 简化的Anthropic LLM服务
 
 基于 anthropic.Anthropic(api_key=None) 的最小LLM调用实现
-无需设置API KEY，让SDK自动寻找认证方式
+集成安全API密钥管理和权限控制
 
 适配MultiRoleChat系统的简化LLM服务
 """
@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass
 
 from ..utils.request_tracker import RequestTracker, log_llm_info, log_llm_error, log_llm_warning
+from ..services.security_service import get_api_key_manager
+from ..services.rate_limit_service import get_rate_limit_service, RateLimitType
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +48,25 @@ class SimpleLLMService:
         Args:
             api_key (Optional[str]): API密钥，None表示自动寻找
         """
-        self.api_key = api_key
+        self.security_manager = get_api_key_manager()
+        self.rate_limiter = get_rate_limit_service()
+
+        # 安全获取API密钥
+        if api_key:
+            self.api_key = api_key
+        else:
+            # 通过安全服务获取API密钥
+            self.api_key = self.security_manager.get_safe_api_key('anthropic')
+
         self.default_model = "claude-3-5-sonnet-20241022"
         self.default_max_tokens = 4096
 
         # 创建客户端
-        self.client = anthropic.Anthropic(api_key=api_key)
+        if self.api_key:
+            self.client = anthropic.Anthropic(api_key=self.api_key)
+        else:
+            self.client = anthropic.Anthropic(api_key=None)
+
         logger.info(f"简化LLM服务已初始化，模型: {self.default_model}")
 
     def llm_call(self, prompt: str) -> str:
@@ -64,6 +79,13 @@ class SimpleLLMService:
         Returns:
             str: LLM响应内容
         """
+        # 检查速率限制
+        rate_limit_result = self.rate_limiter.check_rate_limit(RateLimitType.API_CALL, weight=1)
+        if not rate_limit_result.allowed:
+            error_msg = f"速率限制: {rate_limit_result.retry_after}秒后重试" if rate_limit_result.blocked else "API调用频率过高"
+            logger.warning(f"LLM调用被速率限制阻止: {error_msg}")
+            return f"调用失败: {error_msg}"
+
         try:
             response = self.client.messages.create(
                 model=self.default_model,
@@ -259,11 +281,14 @@ class SimpleLLMService:
             for msg in anthropic_messages:
                 full_prompt += f"{msg['role']}: {msg['content']}\n"
 
+            # 过滤敏感信息
+            safe_prompt = self.security_manager.mask_sensitive_data(full_prompt.strip())
+
             log_llm_info(
                 "CORE",
                 "准备调用Anthropic Claude API",
                 request_id,
-                content=full_prompt.strip(),
+                content=safe_prompt,
                 total_prompt_length=len(full_prompt),
                 api_start_time=start_time,
                 api_model=model,
@@ -332,12 +357,15 @@ class SimpleLLMService:
                     response_quality="正常"
                 )
 
+                # 过滤敏感信息后记录返回内容
+                safe_response_content = self.security_manager.mask_sensitive_data(response_content)
+
                 # 记录完整的返回内容
                 log_llm_info(
                     "CORE",
                     "Anthropic LLM返回内容详情",
                     request_id,
-                    content=response_content,
+                    content=safe_response_content,
                     content_length=len(response_content),
                     is_success=True,
                     response_source="anthropic_api"
