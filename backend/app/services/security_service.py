@@ -78,7 +78,7 @@ class APIKeyManager:
                 # JWT tokens
                 re.compile(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'),
                 # Bearer tokens
-                re.compile(r'Bearer\s+[A-Za-z0-9_-\.]+'),
+                re.compile(r'Bearer\s+[A-Za-z0-9_.-]+'),
             ],
             SensitiveDataType.PASSWORD: [
                 # Password fields
@@ -94,7 +94,7 @@ class APIKeyManager:
             ],
             SensitiveDataType.PERSONAL_INFO: [
                 # Email addresses
-                re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
+                re.compile(r'\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\--]+\.[A-Z|a-z]{2,}\b'),
                 # Phone numbers
                 re.compile(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'),
                 # Credit card numbers (simplified)

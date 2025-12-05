@@ -31,8 +31,8 @@ import {
 // --- LLM测试页面组件 ---
 import LLMTestPage from './LLMTestPage';
 
-// --- 增强版会话剧场组件 ---
-import EnhancedSessionTheater from './components/EnhancedSessionTheater';
+// --- 会话剧场组件 ---
+import SessionTheater from './components/SessionTheater';
 
 // --- API和类型导入 ---
 import { roleApi } from './api/roleApi';
@@ -1123,7 +1123,7 @@ const SessionManagement = ({ onPlayback }: any) => {
   }
 
   if (view === 'theater' && activeSessionId) {
-    return <EnhancedSessionTheater sessionId={activeSessionId} onExit={() => { setView('list'); setActiveSessionId(null); }} theme={themes[theme]} />;
+    return <SessionTheater sessionId={activeSessionId} onExit={() => { setView('list'); setActiveSessionId(null); }} />;
   }
 
   return (
@@ -1336,7 +1336,7 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
               </p>
               <div className="flex flex-wrap gap-2">
                 {requiredRoles.map(ref => (
-                  <span key={ref} className={`px-3 py-1 rounded-full text-xs font-medium ${theme.bgPrimary} ${theme.textPrimary}`}>
+                  <span key={ref} className={`px-3 py-1 rounded-full text-xs font-medium ${theme.bgSoft} ${theme.text}`}>
                     {ref}
                   </span>
                 ))}
@@ -1355,201 +1355,6 @@ const SessionCreator = ({ onCancel, onSuccess }: any) => {
   );
 };
 
-const SessionTheater = ({ sessionId, onExit }: any) => {
-  const { theme } = useTheme();
-  const [session, setSession] = useState<Session | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const loadData = async () => {
-    try {
-      // 加载会话详情
-      const sessionData = await sessionApi.getSession(sessionId);
-      setSession(sessionData);
-
-      // 加载会话消息
-      const messagesData = await sessionApi.getMessages(sessionId, { page_size: 100 });
-      setMessages(messagesData.items);
-    } catch (error) {
-      handleError(error);
-    }
-  };
-
-  useEffect(() => { loadData(); }, [sessionId]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, generating]);
-
-  const handleNextStep = async () => {
-    if (!session) return;
-    setGenerating(true);
-    try {
-      // 调用真实的API执行下一步
-      const result = await sessionApi.executeNextStep(session.id);
-
-      // 添加新消息到消息列表
-      if (result.message) {
-        setMessages(prev => [...prev, result.message]);
-      }
-
-      // 更新会话状态（如果后端返回了更新的会话信息）
-      if (result.execution_info) {
-        // 检查会话是否已完成
-        if (result.execution_info.is_finished) {
-          setSession(prev => prev ? {
-            ...prev,
-            status: 'finished',
-            updated_at: new Date().toISOString()
-          } : null);
-        }
-      }
-
-    } catch (error) {
-      handleError(error);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleFinish = async () => {
-    if (!session) return;
-
-    if (confirm("确定要结束当前会话吗？")) {
-      try {
-        await sessionApi.terminateSession(session.id);
-        setSession(prev => prev ? {
-          ...prev,
-          status: 'finished',
-          updated_at: new Date().toISOString()
-        } : null);
-      } catch (error) {
-        handleError(error);
-      }
-    }
-  };
-
-  if (!session) return <div className="p-10 text-center">Loading Theater...</div>;
-
-  const isFinished = session.status === 'finished' || session.status === 'terminated';
-
-  return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gray-100 rounded-xl overflow-hidden border border-gray-300 shadow-2xl">
-      <div className="bg-white border-b px-6 py-3 flex justify-between items-center shrink-0 z-10">
-        <div className="flex items-center gap-4">
-          <button onClick={onExit} className="p-2 hover:bg-gray-100 rounded-full"><ArrowRight className="rotate-180" /></button>
-          <div>
-            <h2 className="font-bold text-gray-900 flex items-center gap-2">
-              {session.topic} 
-              <Badge color={isFinished ? 'gray' : 'green'}>{isFinished ? '已结束' : '进行中'}</Badge>
-            </h2>
-            <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
-              <span>Template ID: {session.flow_template_id}</span>
-              <span>•</span>
-              <span>Round: {session.current_round + 1}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" icon={Download} />
-        </div>
-      </div>
-
-      <div className="flex-1 flex overflow-hidden">
-        <div className="w-64 bg-gray-50 border-r p-4 overflow-y-auto hidden md:flex md:flex-col justify-between">
-          <div className="space-y-3 flex-1 overflow-y-auto">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Cast Members</h3>
-            {/* TODO: 显示会话角色信息 */}
-            <div className="text-sm text-gray-500">
-              会话角色信息将在此处显示
-            </div>
-          </div>
-
-          <div className="pt-4 border-t mt-4 shrink-0">
-             {!isFinished && (
-               <Button 
-                 variant="danger" 
-                 size="xs" 
-                 onClick={handleFinish} 
-                 icon={LogOut}
-                 className="w-full justify-center"
-               >
-                 结束会话
-               </Button>
-             )}
-          </div>
-        </div>
-
-        <div className="flex-1 bg-white flex flex-col relative">
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {messages.length === 0 && (
-              <div className="text-center text-gray-400 py-20">
-                <p>舞台已就绪，等待开场...</p>
-              </div>
-            )}
-            
-            {messages.map(msg => {
-               // 简化的角色判断逻辑，可以根据需要扩展
-               const isTeacher = msg.speaker_role_name?.includes('老师') || false;
-               // Dynamic bubble color for teacher
-               const roleColor = isTeacher ? `${theme.bgSoft} ${theme.text}` : 'bg-gray-100 text-gray-900';
-               return (
-                <div key={msg.id} className={`flex gap-4 max-w-3xl`}>
-                  <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center shrink-0 font-bold text-gray-600 text-sm">
-                    {msg.speaker_role_name?.[0] || '?'}
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-bold text-sm text-gray-900">{msg.speaker_role_name || '未知角色'}</span>
-                      <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleTimeString()}</span>
-                      {msg.target_role_name && <span className="text-xs text-gray-400">to {msg.target_role_name}</span>}
-                    </div>
-                    <div className={`px-4 py-3 rounded-2xl rounded-tl-none ${roleColor} text-sm leading-relaxed shadow-sm`}>
-                      {msg.content}
-                    </div>
-                    <div className="flex gap-2 opacity-0 hover:opacity-100 transition-opacity">
-                      <button className={`text-xs ${theme.text} hover:underline flex items-center gap-1`}><GitBranch size={10} /> 创建分支</button>
-                    </div>
-                  </div>
-                </div>
-               );
-            })}
-            
-            {generating && (
-              <div className="flex gap-4 max-w-3xl">
-                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0 animate-pulse">...</div>
-                <div className="space-y-1">
-                  <div className="h-4 w-20 bg-gray-100 rounded animate-pulse"/>
-                  <div className="h-10 w-48 bg-gray-100 rounded-2xl rounded-tl-none animate-pulse"/>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="p-4 border-t bg-white flex items-center justify-between gap-4">
-             <div className="text-sm text-gray-500">
-                {!isFinished ? (
-                   <>下一步: <span className="font-medium text-gray-900">执行步骤 #{session.current_round + 1}</span></>
-                ) : (
-                   <span className="flex items-center gap-1 text-green-600"><CheckCircle size={14}/> 对话流程已结束</span>
-                )}
-             </div>
-             <Button 
-               onClick={handleNextStep} 
-               disabled={isFinished || generating} 
-               className="min-w-[140px]"
-               icon={Play}
-             >
-               {generating ? '生成中...' : '执行下一步'}
-             </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // 4. History Page
 const HistoryPage = ({ onPlayback }: any) => {

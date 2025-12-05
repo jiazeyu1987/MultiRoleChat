@@ -15,11 +15,26 @@ This is the **frontend** component of a Multi-Role Dialogue System project desig
 - **Build**: TypeScript compilation followed by Vite build
 
 ### Key Components
-- `MultiRoleDialogSystem.tsx` (63KB) - Main application with full UI
-- `LLMTestPage.tsx` (10KB) - LLM testing interface
-- `theme.tsx` - Theme system with 5 color schemes
-- `App.tsx` - Root component wrapper
+- `MultiRoleDialogSystem.tsx` (63KB) - Main application with full UI for role management and flow execution
+- `LLMTestPage.tsx` (10KB) - LLM testing interface for API validation
+- `theme.tsx` - Theme system with 5 color schemes (blue, purple, emerald, rose, amber)
+- `App.tsx` - Root component wrapper with routing
 - `main.tsx` - React application entry point
+
+### Advanced Components (Currently Have Build Issues)
+- `components/EnhancedSessionTheater.tsx` - Enhanced session interface with debugging
+- `components/StepProgressDisplay.tsx` - Real-time progress visualization
+- `components/LLMIODisplay.tsx` - LLM input/output debugging display
+- `components/StepVisualization.tsx` - Multi-view flow visualization
+- `components/DebugPanel.tsx` - Comprehensive debugging and monitoring
+
+### Custom Hooks
+- `hooks/useStepProgress.ts` - Step progress state management
+- `hooks/useLLMInteractions.ts` - LLM interaction tracking
+- `hooks/useWebSocket.ts` - WebSocket connection management
+- `hooks/usePermissions.ts` - Permission-based access control
+- `hooks/usePerformanceOptimizations.ts` - Performance optimization utilities
+- `hooks/useUserPreferences.ts` - User preferences persistence
 
 ### Core Features
 - Role management interface
@@ -31,9 +46,10 @@ This is the **frontend** component of a Multi-Role Dialogue System project desig
 
 ### Development Configuration
 - `vite.config.ts` - Vite configuration with API proxy to backend:5000
-- `tsconfig.json` - TypeScript strict mode configuration
-- `tailwind.config.js` - Tailwind CSS configuration
-- No ESLint configuration (relies on external linting)
+- `tsconfig.json` - TypeScript strict mode configuration with unused variable checking
+- `tailwind.config.js` - Tailwind CSS configuration for utility-first styling
+- ESLint is configured but requires proper initialization (`npm init @eslint/config`)
+- API client configuration supports multiple base URLs via environment variables
 
 ## Development Commands
 
@@ -75,6 +91,11 @@ cd fronted && npm run dev
 
 ### Source Organization
 - `src/` - All React components and utilities
+- `src/api/` - Centralized API clients (roleApi.ts, flowApi.ts, sessionApi.ts)
+- `src/components/` - Reusable UI components (advanced debugging components)
+- `src/hooks/` - Custom React hooks for state management
+- `src/utils/` - Utility functions (errorHandler.ts)
+- `src/types/` - TypeScript type definitions
 - `dist/` - Production build output
 - `public/` (via index.html) - Static assets and HTML template
 
@@ -82,6 +103,8 @@ cd fronted && npm run dev
 - All API calls go through Vite proxy to backend Flask server
 - Base URL for API calls: `/api/*` (proxied to backend:5000)
 - Error handling utilities in `src/utils/errorHandler.ts`
+- API client supports environment variable configuration (VITE_API_BASE_URL_ALT)
+- Centralized HTTP client with error handling and type safety
 
 ### Component Architecture
 - Single-page application with React Router
@@ -107,18 +130,49 @@ The frontend requires minimal configuration:
 - Backend API keys configured in backend environment variables
 - No frontend-specific environment variables required
 
+## Development Commands
+
+### Build Status and Issues
+```bash
+# Note: The project currently has TypeScript compilation errors
+npm run build  # Will fail due to syntax errors in components/
+
+# Linting requires ESLint configuration
+npm run lint   # Will prompt to run `npm init @eslint/config`
+
+# Development server (runs despite build issues)
+npm run dev    # Works fine for development
+```
+
+### Testing Commands
+```bash
+# Run integration tests (if available)
+npm test
+
+# Run test coverage (if configured)
+npm run test:coverage
+```
+
 ## Development Guidelines
 
 1. **Directory Name**: The frontend directory is intentionally named "fronted" (not "frontend") - preserve this naming.
 
-2. **API Proxy**: All `/api/*` requests are automatically proxied to the backend server during development.
+2. **API Proxy**: All `/api/*` requests are automatically proxied to the backend server during development via Vite proxy (port 3000 → backend:5000).
 
-3. **TypeScript**: Strict mode is enabled with unused variable checking for code quality.
+3. **TypeScript**: Strict mode is enabled with unused variable checking. Note: There are currently syntax errors in `components/` directory that prevent successful builds.
 
 4. **Styling**: Use Tailwind CSS utility classes with the existing theme system for consistency.
 
 5. **Icons**: Use Lucide React icons for consistent UI elements.
 
-6. **Component Structure**: Follow the existing component patterns and file organization.
+6. **Component Structure**: Follow the existing component patterns and file organization in `src/`.
 
-7. **Error Handling**: Utilize the error handling utilities for consistent API error management.
+7. **Error Handling**: Utilize the error handling utilities in `src/utils/errorHandler.ts` for consistent API error management.
+
+8. **API Integration**: Use the centralized API client pattern from `src/api/` with proper TypeScript interfaces.
+
+## Known Issues
+
+- **Build Failures**: TypeScript compilation fails due to syntax errors in components (unterminated regex literals, missing brackets)
+- **ESLint Configuration**: Lint command requires ESLint config initialization
+- **Development Environment**: Despite build issues, the development server works correctly

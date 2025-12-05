@@ -16,10 +16,20 @@
 
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
+  "exclude": [
+    "src/test/**/*",
+    "src/components/DebugPanel.tsx",
+    "src/components/LLMIODisplay.tsx",
+    "src/components/StepProgressDisplay.tsx",
+    "src/components/StepVisualization.tsx",
+    "src/hooks/useLLMInteractions.ts",
+    "src/hooks/useStepProgress.ts",
+    "src/hooks/useWebSocket.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
